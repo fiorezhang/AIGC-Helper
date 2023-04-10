@@ -677,7 +677,7 @@ class UiHelper():
         if self.editWorkingFile != "":
             if True:
                 # read image, define mask and models
-                image = cv2.imread(self.editWorkingFile)
+                image = cv2.imread(self.editWorkingFile, cv2.IMREAD_UNCHANGED)
                 h, w = image.shape[:2]
                 resPadded = max(w, h)
                 # get cutting outbound region
@@ -701,9 +701,9 @@ class UiHelper():
                 
     def editMatCallback(self):
         if self.editWorkingFile != "":
-            try:
+            if True:
                 # read image, define mask and models
-                image = cv2.imread(self.editWorkingFile)
+                image = cv2.imread(self.editWorkingFile, cv2.IMREAD_UNCHANGED)
                 mask = np.zeros(image.shape[:2],np.uint8)
                 bgdModel = np.zeros((1,65),np.float64)
                 fgdModel = np.zeros((1,65),np.float64)
@@ -723,6 +723,7 @@ class UiHelper():
                 rect = (round(startX*resPadded/RES_WORKING), round(startY*resPadded/RES_WORKING), round(endX*resPadded/RES_WORKING), round(endY*resPadded/RES_WORKING))
                 #print(rect)
                 
+                image = image[:, :, :3]
                 cv2.grabCut(image, mask, rect, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_RECT)
                 mask2 = np.where((mask==2)|(mask==0),0,1).astype('uint8')
                 image = image * mask2[:,:,np.newaxis]
@@ -731,9 +732,9 @@ class UiHelper():
                 savedImageFile = 'output/' + str(str_image)+'.png'
                 cv2.imwrite(savedImageFile, cv2.merge((image, alpha)))
                 self.insertGeneratedImage(savedImageFile)
-            except:
-                pass
-                print("editMatCallback ERROR")
+            #except:
+            #    pass
+            #    print("editMatCallback ERROR")
 
     # ---- change resolution targets and scale in edit    
     def editResizeCallback(self):
