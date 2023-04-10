@@ -315,12 +315,12 @@ class UiHelper():
         self.xpuLabel = ttkbootstrap.Label(self.configDrawFrame, text='Select "XPU"', bootstyle=INFO)
         self.xpuLabel.grid(row=3, column=0, padx=2, pady=2)
         
-        self.listXpu = [('CPU  ', 0), ('GPU 0', 1), ('GPU 1', 2)]
+        self.listXpu = [('CPU  ', 0), ('GPU 0', 1), ('GPU 1', 2), ('AUTO', 3)]
         self.vXpu = tk.IntVar()
-        self.vXpu.set(2)
+        self.vXpu.set(1)
         for xpu, num in self.listXpu:
             self.xpuRadiobutton = tk.Radiobutton(self.configDrawFrame, text=xpu, variable=self.vXpu, value=num, width=10, indicatoron=False)
-            self.xpuRadiobutton.grid(row=4, column=1+num, padx=2, pady=2)  
+            self.xpuRadiobutton.grid(row=4+int(num/2), column=1+int(num%2), padx=2, pady=2)  
 
         # ------ for edit image
         self.configEditFrame = ttkbootstrap.Labelframe(self.configFrame, text='EDIT', width=390, height=200, bootstyle=PRIMARY)
@@ -438,7 +438,11 @@ class UiHelper():
             elif xpuIndex == 2: #GPU 1
                 self.localPipe = compileModel('GPU.1')
                 self.drawPreviewImage = ImageTk.PhotoImage(Image.open('ui/ui-ready.png').resize((RES_PREVIEW, RES_PREVIEW)))
-                self.drawPreviewLabel.configure(image=self.drawPreviewImage)              
+                self.drawPreviewLabel.configure(image=self.drawPreviewImage)  
+            elif xpuIndex == 3: #AUTO
+                self.localPipe = compileModel('AUTO')
+                self.drawPreviewImage = ImageTk.PhotoImage(Image.open('ui/ui-ready.png').resize((RES_PREVIEW, RES_PREVIEW)))
+                self.drawPreviewLabel.configure(image=self.drawPreviewImage)                   
 
             # clear progressbar
             self.drawGenerateProgressbar['value'] = 0
@@ -833,6 +837,8 @@ class UiHelper():
                         taskGenerate = ['GPU.0', prompt, negative, seed, steps, image, strength, mask]
                     elif xpuIndex == 2: #GPU 1
                         taskGenerate = ['GPU.1', prompt, negative, seed, steps, image, strength, mask]
+                    elif xpuIndex == 3: #AUTO
+                        taskGenerate = ['AUTO', prompt, negative, seed, steps, image, strength, mask]
                     self.queueTaskGenerate.put(taskGenerate)
                         
                 self.drawGenerateButton['text'] = 'Interrupt'
