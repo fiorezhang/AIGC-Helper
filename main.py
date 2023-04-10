@@ -680,10 +680,15 @@ class UiHelper():
                 image = cv2.imread(self.editWorkingFile)
                 h, w = image.shape[:2]
                 resPadded = max(w, h)
-                # get matting outbound region
+                # get cutting outbound region
                 regionRect = self.editRegionRect
+                startX, startY, endX, endY = regionRect["startX"], regionRect["startY"], regionRect["endX"], regionRect["endY"]
+                if startX > endX:
+                    startX, endX = endX, startX
+                if startY > endY:
+                    startY, endY = endY, startY
                 # modify the region coordination by image actual size
-                rect = (round(regionRect["startX"]*resPadded/RES_WORKING), round(regionRect["startY"]*resPadded/RES_WORKING), round(regionRect["endX"]*resPadded/RES_WORKING), round(regionRect["endY"]*resPadded/RES_WORKING))
+                rect = (round(startX*resPadded/RES_WORKING), round(startY*resPadded/RES_WORKING), round(endX*resPadded/RES_WORKING), round(endY*resPadded/RES_WORKING))
                 #print(rect)            
                 image = image[rect[1]:rect[3], rect[0]:rect[2], :]
                 str_image = '_cutting_time_'+str(int(time.time()))
@@ -709,8 +714,13 @@ class UiHelper():
                 
                 # get matting outbound region
                 regionRect = self.editRegionRect
+                startX, startY, endX, endY = regionRect["startX"], regionRect["startY"], regionRect["endX"], regionRect["endY"]
+                if startX > endX:
+                    startX, endX = endX, startX
+                if startY > endY:
+                    startY, endY = endY, startY
                 # modify the region coordination by image actual size
-                rect = (round(regionRect["startX"]*resPadded/RES_WORKING), round(regionRect["startY"]*resPadded/RES_WORKING), round(regionRect["endX"]*resPadded/RES_WORKING), round(regionRect["endY"]*resPadded/RES_WORKING))
+                rect = (round(startX*resPadded/RES_WORKING), round(startY*resPadded/RES_WORKING), round(endX*resPadded/RES_WORKING), round(endY*resPadded/RES_WORKING))
                 #print(rect)
                 
                 cv2.grabCut(image, mask, rect, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_RECT)
