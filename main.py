@@ -317,7 +317,7 @@ class UiHelper():
         
         self.listXpu = [('CPU  ', 0), ('GPU 0', 1), ('GPU 1', 2), ('AUTO', 3)]
         self.vXpu = tk.IntVar()
-        self.vXpu.set(1)
+        self.vXpu.set(3)
         for xpu, num in self.listXpu:
             self.xpuRadiobutton = tk.Radiobutton(self.configDrawFrame, text=xpu, variable=self.vXpu, value=num, width=10, indicatoron=False)
             self.xpuRadiobutton.grid(row=4+int(num/2), column=1+int(num%2), padx=2, pady=2)  
