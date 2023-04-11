@@ -14,6 +14,7 @@ import os
 import time
 import random
 import queue
+import threading
 import numpy as np
 import win32clipboard
 from io import BytesIO
@@ -24,15 +25,19 @@ import cv2
 from translate import translateYouDao
 
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
+
 #import stdredirect
 #mystd = stdredirect.myStdout()
 
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
 
+# import Chat GPT model
+from pyllamacpp.model import Model
+
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v3.0'
+VERSION = 'v4.0'
 
 # whether use youdao transfer
 TRANSFER = False
@@ -280,6 +285,15 @@ class UiHelper():
         self.editOutputHeightLabel.grid(row=2, column=4, padx=2, pady=2)        
         self.editZoomScale.grid(row=3, column=0, padx=2, pady=2)
         
+        # ====== chat page ====== create multiple Frames
+        self.chatOutputText = ttkbootstrap.Text(self.chatFrame, width=50, height=50, state=tk.DISABLED) 
+        self.chatInputEntry = ttkbootstrap.Entry(self.chatFrame, width=50) 
+        
+        self.chatOutputText.grid(row=0, column=0, padx=2, pady=2)
+        self.chatInputEntry.grid(row=1, column=0, padx=2, pady=2)
+        self.chatInputEntry.bind("<Return>", self.chatInputEnterCallback)
+        self.chatInputEntry.bind("<Up>", self.chatInputUpCallback)        
+        
         # ====    locate configurations in config Frame
         # ------ for overall setting
         self.configOverallFrame = ttkbootstrap.Labelframe(self.configFrame, text='OVERALL', width=390, height=200, bootstyle=PRIMARY)
@@ -344,7 +358,11 @@ class UiHelper():
         self.root.bind("<Leave>", self.hideWindow)
         self.isWorking = False
         self.hideTimer = None
-       
+        
+        # ------ ensure output folder exists
+        if not os.path.exists('output'):
+            os.mkdir('output')        
+                
         # ------ draw initialize
         # queue for generation tasks    
         self.queueTaskGenerate = queue.Queue()
@@ -373,11 +391,18 @@ class UiHelper():
         # ------ edit initialize
         self.editRegionRect = {"startX": 1, "startY": 1, "endX": RES_WORKING-2, "endY": RES_WORKING-2, "id": None}
         self.asyncLoopEdit()
+
+        # ------ chat initialize
+        # queue for generation tasks   
+        self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=2048)
+        self.isChatting = False
+        self.chatLastLine = ""
+        self.queueTaskChat = queue.Queue()
+        
+        self.inputThread = threading.Thread(target=self.asyncLoopChat)
+        self.inputThread.daemon = True
+        self.inputThread.start()
             
-        # ------ ensure output folder exists
-        if not os.path.exists('output'):
-            os.mkdir('output')        
-                
         # ======== kick off main loop
         self.root.mainloop()              
 
@@ -926,14 +951,41 @@ class UiHelper():
         # iterately call next routine
         self.root.after(intervalLoop, self.asyncLoopEdit)        
 
+    # ---- handle input/output in chat panel 
+    def chatInputEnterCallback(self, event):
+        if self.isChatting == False:
+            line = self.chatInputEntry.get()
+            if line != '':
+                self.chatInputEntry.delete(0, END)
+                self.queueTaskChat.put(line)
+                self.isChatting = True
+                self.chatLastLine = line
+
+    def chatInputUpCallback(self, event):
+        if self.isChatting == False: 
+            line = self.chatInputEntry.get()
+            if line == '':
+                self.chatInputEntry.insert(0, self.chatLastLine)
+
+    def chatOutputCallback(self, text):
+        #print(text)
+        self.chatOutputText.insert(END, text)
+        self.chatOutputText.see(END)
+
     def asyncLoopChat(self):
-        intervalLoop = 100 #ms
-        output = self.processChat.stderr.readline()
-        if output:
-            #self.drawPromptText.insert(END, output.decode('utf-8'))
-            self.drawPromptText.insert(END, '*')
-        if self.processChat.poll() is None:
-            self.root.after(intervalLoop, self.asyncLoopChat)
+        while True:
+            if self.isChatting == True:
+                # call GPT to generate feedback
+                line = self.queueTaskChat.get()
+                if line:
+                    self.chatInputEntry.config(state=tk.DISABLED)
+                    self.chatOutputText.config(state=tk.NORMAL)
+                    self.chatOutputText.delete('1.0', END)
+                    self.chatModel.generate(line, n_predict=2048, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=8)
+                    self.chatOutputText.config(state=tk.DISABLED)
+                    self.chatInputEntry.config(state=tk.NORMAL)
+                self.isChatting = False    
+            time.sleep(0.5)
 
 # ### MAIN
 #   
