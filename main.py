@@ -32,20 +32,18 @@ from translate import translateYouDao
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
 
-# import Chat GPT model
-from pyllamacpp.model import Model
 
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v4.0'
+VERSION = 'v4.1'
 
 # whether use youdao transfer
 TRANSFER = False
 
 # resolutions
 RES_ORIGINAL = 512
-RES_PREVIEW  = 384
-RES_GALLERY  = 64
+RES_PREVIEW  = 256
+RES_GALLERY  = 48
 RES_WORKING  = 192
 RES_MASK     = 64
 
@@ -61,38 +59,36 @@ class UiHelper():
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         app_width = 400
-        app_height = screen_height
+        app_height = 720#screen_height-80
         self.root.geometry(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width)+'+0') # size, start position
+        print(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width)+'+0')
         # set window attibutes
         self.root.resizable(False, False) # resize
         self.root.overrideredirect(False) # title lane
         self.root.title('AIGC Helper ' + VERSION)
-        self.root.attributes("-topmost",1) # top window
+        self.root.attributes("-topmost",0) # top window
         self.root.iconphoto(True, ImageTk.PhotoImage(file="ui/ui-blank.png")) # icon
 
         # ====== create notebook panels for different sub-functions
         self.notebook = ttkbootstrap.Notebook(self.root)
+        self.chatFrame = ttkbootstrap.Frame()
         self.drawFrame = ttkbootstrap.Frame()
         self.editFrame = ttkbootstrap.Frame()
-        self.chatFrame = ttkbootstrap.Frame()
         self.configFrame = ttkbootstrap.Frame()
+        self.notebook.add(self.chatFrame, text="Chat")
         self.notebook.add(self.drawFrame, text="Draw")
         self.notebook.add(self.editFrame, text="Edit")
-        self.notebook.add(self.chatFrame, text="Chat")
         self.notebook.add(self.configFrame, text="Config")
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
         # ====== draw image ====== create multiple Frames
-        self.drawPreviewFrame = ttkbootstrap.Frame(self.drawFrame, width=400, height=400)
-        self.drawGalleryFrame = ttkbootstrap.Frame(self.drawFrame, width=400, height=160)
+        self.drawPreviewFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=270)
         self.drawSettingFrame = ttkbootstrap.Frame(self.drawFrame, width=190, height=230)
-        self.drawWorkingFrame = ttkbootstrap.Frame(self.drawFrame, width=210, height=230)
-        self.drawPromptFrame = ttkbootstrap.Frame(self.drawFrame, width=400, height=240)
+        self.drawWorkingFrame = ttkbootstrap.Frame(self.drawFrame, width=200, height=230)
+        self.drawPromptFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=200)
         
         self.drawPreviewFrame.grid(row=0, column=0, columnspan=2)
         self.drawPreviewFrame.grid_propagate(False)
-        self.drawGalleryFrame.grid(row=1, column=0, columnspan=2)
-        self.drawGalleryFrame.grid_propagate(False)
         self.drawSettingFrame.grid(row=2, column=0)
         self.drawSettingFrame.grid_propagate(False)             
         self.drawWorkingFrame.grid(row=2, column=1)
@@ -103,7 +99,7 @@ class UiHelper():
         # ------ locate main canvas in preview Frame
         self.drawPreviewImage = ImageTk.PhotoImage(Image.open('ui/ui-welcome.png').resize((RES_PREVIEW, RES_PREVIEW)))
         self.drawPreviewLabel = ttkbootstrap.Label(self.drawPreviewFrame, image=self.drawPreviewImage)
-        self.drawPreviewLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.drawPreviewLabel.grid(row=0, column=0, rowspan=8, padx=2, pady=2)
         
         self.drawPreviewLabel.bind("<Double-Button-1>", self.drawCopyToClipboard)
 
@@ -114,12 +110,12 @@ class UiHelper():
         self.vDrawSelectedImageIndex.set(0)
         
         # max images in gallery
-        self.maxGalleryImageCount = 10
-        self.countImagePerRow = 5
+        self.maxGalleryImageCount = 8
+        self.countImagePerRow = 2
         for indexImage in range(self.maxGalleryImageCount):
             galleryImage = ImageTk.PhotoImage(Image.open('ui/ui-blank.png').resize((RES_GALLERY, RES_GALLERY)))
-            self.drawGalleryRadiobutton = tk.Radiobutton(self.drawGalleryFrame, image=galleryImage, variable=self.vDrawSelectedImageIndex, value=indexImage, width=RES_GALLERY, height=RES_GALLERY, indicatoron=False)
-            self.drawGalleryRadiobutton.grid(row=0+int(indexImage/self.countImagePerRow), column=int(indexImage%self.countImagePerRow), padx=2, pady=2)
+            self.drawGalleryRadiobutton = tk.Radiobutton(self.drawPreviewFrame, image=galleryImage, variable=self.vDrawSelectedImageIndex, value=indexImage, width=RES_GALLERY, height=RES_GALLERY, indicatoron=False)
+            self.drawGalleryRadiobutton.grid(row=0+int(indexImage/self.countImagePerRow), column=1+int(indexImage%self.countImagePerRow), padx=2, pady=2)
             self.listDrawGalleryImages.append({'button':self.drawGalleryRadiobutton, 'image':galleryImage})
 
         # ------ locate canvas(working in progress) image in canvas Frame
@@ -165,7 +161,7 @@ class UiHelper():
         self.drawBatchStatusLabel.grid(row=7, column=2, padx=2, pady=2)
         
         # ------ locate user input in prompt Frame
-        self.drawPromptText = ttkbootstrap.ScrolledText(self.drawPromptFrame, width=50, height=3)    
+        self.drawPromptText = ttkbootstrap.Text(self.drawPromptFrame, width=50, height=3)    
         self.drawInitializeButton = ttkbootstrap.Button(self.drawPromptFrame, text='Initialize', width="10", command=self.drawInitializeCallback, bootstyle=(PRIMARY, OUTLINE))
         self.drawGenerateButton = ttkbootstrap.Button(self.drawPromptFrame, text='Generate', width="10", command=self.drawGenerateCallback, bootstyle=(PRIMARY, OUTLINE))
         self.drawGenerateProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=200, style='success.Striped.Horizontal.TProgressbar')
@@ -180,16 +176,13 @@ class UiHelper():
         self.isGenerating = False
 
         # ====== edit image ====== create multiple Frames
-        self.editPreviewFrame = ttkbootstrap.Frame(self.editFrame, width=400, height=400)
-        self.editGalleryFrame = ttkbootstrap.Frame(self.editFrame, width=400, height=160)
+        self.editPreviewFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=270)
         self.editSettingFrame = ttkbootstrap.Frame(self.editFrame, width=190, height=230)
-        self.editWorkingFrame = ttkbootstrap.Frame(self.editFrame, width=210, height=230)
-        self.editZoomFrame = ttkbootstrap.Frame(self.editFrame, width=400, height=240)
+        self.editWorkingFrame = ttkbootstrap.Frame(self.editFrame, width=200, height=230)
+        self.editZoomFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=200)
         
         self.editPreviewFrame.grid(row=0, column=0, columnspan=2)
         self.editPreviewFrame.grid_propagate(False)
-        self.editGalleryFrame.grid(row=1, column=0, columnspan=2)
-        self.editGalleryFrame.grid_propagate(False)
         self.editSettingFrame.grid(row=2, column=0)
         self.editSettingFrame.grid_propagate(False)             
         self.editWorkingFrame.grid(row=2, column=1)
@@ -200,7 +193,7 @@ class UiHelper():
         # ------ locate main canvas in preview Frame
         self.editPreviewImage = ImageTk.PhotoImage(Image.open('ui/ui-welcome.png').resize((RES_PREVIEW, RES_PREVIEW)))
         self.editPreviewLabel = ttkbootstrap.Label(self.editPreviewFrame, image=self.editPreviewImage)
-        self.editPreviewLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.editPreviewLabel.grid(row=0, column=0, rowspan=8, padx=2, pady=2)
         
         self.editPreviewLabel.bind("<Double-Button-1>", self.editCopyToClipboard)
         
@@ -215,8 +208,8 @@ class UiHelper():
         #self.countImagePerRow = 5
         for indexImage in range(self.maxGalleryImageCount):
             galleryImage = ImageTk.PhotoImage(Image.open('ui/ui-blank.png').resize((RES_GALLERY, RES_GALLERY)))
-            self.editGalleryRadiobutton = tk.Radiobutton(self.editGalleryFrame, image=galleryImage, variable=self.vEditSelectedImageIndex, value=indexImage, width=RES_GALLERY, height=RES_GALLERY, indicatoron=False)
-            self.editGalleryRadiobutton.grid(row=0+int(indexImage/self.countImagePerRow), column=int(indexImage%self.countImagePerRow), padx=2, pady=2)
+            self.editGalleryRadiobutton = tk.Radiobutton(self.editPreviewFrame, image=galleryImage, variable=self.vEditSelectedImageIndex, value=indexImage, width=RES_GALLERY, height=RES_GALLERY, indicatoron=False)
+            self.editGalleryRadiobutton.grid(row=0+int(indexImage/self.countImagePerRow), column=1+int(indexImage%self.countImagePerRow), padx=2, pady=2)
             self.listEditGalleryImages.append({'button':self.editGalleryRadiobutton, 'image':galleryImage})
         
         # ------ locate canvas(working in progress) image in canvas Frame
@@ -286,11 +279,33 @@ class UiHelper():
         self.editZoomScale.grid(row=3, column=0, padx=2, pady=2)
         
         # ====== chat page ====== create multiple Frames
-        self.chatOutputText = ttkbootstrap.Text(self.chatFrame, width=50, height=50, state=tk.DISABLED) 
-        self.chatInputEntry = ttkbootstrap.Entry(self.chatFrame, width=50) 
+        self.chatOutputFrame = ttkbootstrap.Frame(self.chatFrame, width=300, height=600)
+        self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=90, height=600)
+        self.chatInputFrame = ttkbootstrap.Frame(self.chatFrame, width=390, height=100)
         
-        self.chatOutputText.grid(row=0, column=0, padx=2, pady=2)
-        self.chatInputEntry.grid(row=1, column=0, padx=2, pady=2)
+        self.chatOutputFrame.grid(row=0, column=0)
+        self.chatOutputFrame.grid_propagate(False)
+        self.chatOutputFrame.columnconfigure(0, weight=1)
+        self.chatOutputFrame.rowconfigure(0, weight=1)
+        self.chatHistoryFrame.grid(row=0, column=1)
+        self.chatHistoryFrame.grid_propagate(False)             
+        self.chatInputFrame.grid(row=1, column=0, columnspan=2)
+        self.chatInputFrame.grid_propagate(False)
+        self.chatInputFrame.columnconfigure(0, weight=1)
+        self.chatInputFrame.rowconfigure(0, weight=1)
+        
+        # ---- chat input/output
+        self.chatOutputText = ttkbootstrap.Text(self.chatOutputFrame, state=tk.DISABLED) 
+        self.chatOutputText.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        self.chatOutputText.tag_config('tagNormal', foreground='white')
+        self.chatOutputText.tag_config('tagReact', foreground='lightgreen')
+        self.chatOutputText.tag_config('tagWarning', foreground='red')
+        
+        self.chatHistoryLabel = ttkbootstrap.Label(self.chatHistoryFrame, text='Chat History', bootstyle=INFO)
+        self.chatHistoryLabel.grid(row=0, column=0, padx=2, pady=2)
+        
+        self.chatInputEntry = ttkbootstrap.Entry(self.chatInputFrame) 
+        self.chatInputEntry.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
         self.chatInputEntry.bind("<Return>", self.chatInputEnterCallback)
         self.chatInputEntry.bind("<Up>", self.chatInputUpCallback)        
         
@@ -300,16 +315,21 @@ class UiHelper():
         self.configOverallFrame.grid(row=0, column=0)
         self.configOverallFrame.grid_propagate(False)
         
+        self.alwaysTopLabel = ttkbootstrap.Label(self.configOverallFrame, text='Always on top', bootstyle=INFO)
+        self.alwaysTopLabel.grid(row=0, column=0, padx=2, pady=2)  
+        self.vAlwaysTop = tk.IntVar()
+        self.vAlwaysTop.set(0)
+        self.alwaysTopCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="AlwaysTop", variable=self.vAlwaysTop, width=10, bootstyle="success-round-toggle")
+        self.alwaysTopCheckbutton.grid(row=1, column=1, padx=2, pady=2)        
+        
         self.autoHideLabel = ttkbootstrap.Label(self.configOverallFrame, text='Auto hide', bootstyle=INFO)
         self.hideIntroLabel = ttkbootstrap.Label(self.configOverallFrame, text='Move mouse to Right edge of screen to wake') 
-        
-        self.autoHideLabel.grid(row=0, column=0, padx=2, pady=2)  
-        self.hideIntroLabel.grid(row=1, column=1, columnspan=3, padx=2, pady=2)  
-        
+        self.autoHideLabel.grid(row=2, column=0, padx=2, pady=2)  
+        self.hideIntroLabel.grid(row=4, column=1, columnspan=3, padx=2, pady=2)  
         self.vAutoHide = tk.IntVar()
         self.vAutoHide.set(0)
         self.autoHideCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="AutoHide", variable=self.vAutoHide, width=10, bootstyle="success-round-toggle")
-        self.autoHideCheckbutton.grid(row=2, column=1, padx=2, pady=2)
+        self.autoHideCheckbutton.grid(row=3, column=1, padx=2, pady=2)
         
         # ------ for draw image
         self.configDrawFrame = ttkbootstrap.Labelframe(self.configFrame, text='DRAW', width=390, height=200, bootstyle=PRIMARY)
@@ -319,10 +339,12 @@ class UiHelper():
         self.generateLabel = ttkbootstrap.Label(self.configDrawFrame, text='Generation Speed', bootstyle=INFO)
         self.generateLabel.grid(row=0, column=0, padx=2, pady=2)  
         self.qualityLabel = ttkbootstrap.Label(self.configDrawFrame, text='Fast<<    >>Quality') 
-        self.qualityScale = ttkbootstrap.Scale(self.configDrawFrame, from_=2, to=5, orient=HORIZONTAL)
+        self.qualityScale = ttkbootstrap.Scale(self.configDrawFrame, from_=1, to=4, orient=HORIZONTAL, command=self.configQualityScaleCallback)
+        self.configQualityStatusLabel = ttkbootstrap.Label(self.configDrawFrame, text='20')
         self.qualityScale.set(2) 
-        self.qualityLabel.grid(row=1, column=1, padx=2, columnspan=2, pady=2)
-        self.qualityScale.grid(row=2, column=1, padx=2, columnspan=2, pady=2)
+        self.qualityLabel.grid(row=1, column=1, columnspan=2, padx=2, pady=2)
+        self.qualityScale.grid(row=2, column=1, columnspan=2, padx=2, pady=2)
+        self.configQualityStatusLabel.grid(row=2, column=3, padx=2, pady=2)
         self.timeLabel = ttkbootstrap.Label(self.configDrawFrame, text='Time: ', width=30) #must have, can hide
         #self.timeLabel.grid(row=2, column=0, columnspan=3, padx=2, pady=2)
         
@@ -394,7 +416,7 @@ class UiHelper():
 
         # ------ chat initialize
         # queue for generation tasks   
-        self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=2048)
+        self.chatModel = None 
         self.isChatting = False
         self.chatLastLine = ""
         self.queueTaskChat = queue.Queue()
@@ -417,6 +439,10 @@ class UiHelper():
                 self.root.after_cancel(self.hideTimer)
             self.hideTimer = None
             self.isWorking = True
+        if self.vAlwaysTop.get() == 1:
+            self.root.attributes("-topmost",1)
+        else:
+            self.root.attributes("-topmost",0)
         
     def hideWindow(self, event):
         if self.vAutoHide.get() == 1:
@@ -433,7 +459,7 @@ class UiHelper():
         screenWidth, screenHeight = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         app_x, app_y = self.root.winfo_x(), self.root.winfo_y()
         appWidth, appHeight = self.root.winfo_width(), self.root.winfo_height()
-        if screenWidth - x < 10 and y > 40 and screenHeight - y > 40:    # only enter this area the app is waken up
+        if screenWidth - x < 10 and y > app_y and y < app_y+appHeight:    # only enter this area the app is waken up
             self.showWindow(None)
         else:
             if x < app_x or x > app_x+appWidth or y < app_y or y > app_y+appHeight:
@@ -700,6 +726,10 @@ class UiHelper():
         
     def drawBatchScaleCallback(self, event):
         self.drawBatchStatusLabel.configure(text=str(round(float(event))))
+        
+    # ---- show scale results in config
+    def configQualityScaleCallback(self, event):
+        self.configQualityStatusLabel.configure(text=str(round(float(event)*10)))
 
     # ---- matting function
     def editCutCallback(self):
@@ -954,36 +984,50 @@ class UiHelper():
     # ---- handle input/output in chat panel 
     def chatInputEnterCallback(self, event):
         if self.isChatting == False:
-            line = self.chatInputEntry.get()
-            if line != '':
+            chatInputString = self.chatInputEntry.get()
+            if chatInputString != '':
                 self.chatInputEntry.delete(0, END)
-                self.queueTaskChat.put(line)
+                self.queueTaskChat.put(chatInputString)
                 self.isChatting = True
-                self.chatLastLine = line
+                self.chatLastLine = chatInputString
 
     def chatInputUpCallback(self, event):
         if self.isChatting == False: 
-            line = self.chatInputEntry.get()
-            if line == '':
+            chatInputString = self.chatInputEntry.get()
+            if chatInputString == '':
                 self.chatInputEntry.insert(0, self.chatLastLine)
 
     def chatOutputCallback(self, text):
         #print(text)
-        self.chatOutputText.insert(END, text)
+        self.chatOutputText.insert(END, text, 'tagNormal')
         self.chatOutputText.see(END)
 
     def asyncLoopChat(self):
+        # import Chat GPT model
+        from pyllamacpp.model import Model    
+        self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=512)
         while True:
             if self.isChatting == True:
                 # call GPT to generate feedback
-                line = self.queueTaskChat.get()
-                if line:
-                    self.chatInputEntry.config(state=tk.DISABLED)
+                chatInputString = self.queueTaskChat.get()
+                if chatInputString.isascii():
+                    while chatInputString:
+                        self.chatInputEntry.config(state=tk.DISABLED)
+                        self.chatOutputText.config(state=tk.NORMAL)
+                        self.chatOutputText.delete('1.0', END)
+                        self.chatOutputText.insert(END, '>', 'tagReact')
+                        chatOutputString = self.chatModel.generate(chatInputString+'\n\n', n_predict=512, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=8)
+                        self.chatOutputText.config(state=tk.DISABLED)
+                        self.chatInputEntry.config(state=tk.NORMAL)
+                        print(chatInputString.strip() == chatOutputString.strip())
+                        if chatInputString.strip() != chatOutputString.strip():
+                            chatInputString = None
+                else:
                     self.chatOutputText.config(state=tk.NORMAL)
                     self.chatOutputText.delete('1.0', END)
-                    self.chatModel.generate(line, n_predict=2048, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=8)
+                    self.chatOutputText.insert(END, '>>> ', 'tagWarning')
+                    self.chatOutputText.insert(END, "Sorry. I don't understand. Would you please speak English? ", 'tagNormal')
                     self.chatOutputText.config(state=tk.DISABLED)
-                    self.chatInputEntry.config(state=tk.NORMAL)
                 self.isChatting = False    
             time.sleep(0.5)
 
