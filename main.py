@@ -22,23 +22,21 @@ import subprocess
 import cv2
 
 # ---- translate between English and Chinese, leverage YouDao online service
-from translate import translateYouDao
+from translate import translateYouDaoC2E, translateYouDaoE2C
 
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
-
-#import stdredirect
-#mystd = stdredirect.myStdout()
+import stdredirect
+mystd = stdredirect.myStdout()
 
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
 
-
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v4.1'
+VERSION = 'v4.2'
 
 # whether use youdao transfer
-TRANSFER = False
+TRANSLATE = False
 
 # resolutions
 RES_ORIGINAL = 512
@@ -279,8 +277,8 @@ class UiHelper():
         self.editZoomScale.grid(row=3, column=0, padx=2, pady=2)
         
         # ====== chat page ====== create multiple Frames
-        self.chatOutputFrame = ttkbootstrap.Frame(self.chatFrame, width=300, height=600)
-        self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=90, height=600)
+        self.chatOutputFrame = ttkbootstrap.Frame(self.chatFrame, width=270, height=600)
+        self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=120, height=600)
         self.chatInputFrame = ttkbootstrap.Frame(self.chatFrame, width=390, height=100)
         
         self.chatOutputFrame.grid(row=0, column=0)
@@ -294,16 +292,30 @@ class UiHelper():
         self.chatInputFrame.columnconfigure(0, weight=1)
         self.chatInputFrame.rowconfigure(0, weight=1)
         
-        # ---- chat input/output
+        # ---- chat output
         self.chatOutputText = ttkbootstrap.Text(self.chatOutputFrame, state=tk.DISABLED) 
         self.chatOutputText.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
         self.chatOutputText.tag_config('tagNormal', foreground='white')
         self.chatOutputText.tag_config('tagReact', foreground='lightgreen')
         self.chatOutputText.tag_config('tagWarning', foreground='red')
         
+        # ---- chat history
         self.chatHistoryLabel = ttkbootstrap.Label(self.chatHistoryFrame, text='Chat History', bootstyle=INFO)
         self.chatHistoryLabel.grid(row=0, column=0, padx=2, pady=2)
+
+        self.listChatRecordStrings = []   # generated output strings, could be many
+        self.listChatRecordButtons = []   # buttons of history, fixed
+        self.vChatSelectedRecordIndex = tk.IntVar()  # current which image is selected in <imageRadiobutton>
+        self.vChatSelectedRecordIndex.set(0)
         
+        # max images in gallery ---- keep sync with draw frame
+        self.maxChatRecordCount = 8
+        for indexRecord in range(self.maxChatRecordCount):
+            self.chatRecordRadiobutton = tk.Radiobutton(self.chatHistoryFrame, text="", width=14, height=3, variable=self.vChatSelectedRecordIndex, value=indexRecord, indicatoron=False)
+            self.chatRecordRadiobutton.grid(row=1+indexRecord, column=0, padx=2, pady=2)
+            self.listChatRecordButtons.append(self.chatRecordRadiobutton)
+        
+        # ---- chat input
         self.chatInputEntry = ttkbootstrap.Entry(self.chatInputFrame) 
         self.chatInputEntry.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
         self.chatInputEntry.bind("<Return>", self.chatInputEnterCallback)
@@ -420,8 +432,9 @@ class UiHelper():
         self.isChatting = False
         self.chatLastLine = ""
         self.queueTaskChat = queue.Queue()
+        self.lastChatRecordIndex = -1
         
-        self.inputThread = threading.Thread(target=self.asyncLoopChat)
+        self.inputThread = threading.Thread(target=self.threadLoopChatResponse)
         self.inputThread.daemon = True
         self.inputThread.start()
             
@@ -857,8 +870,8 @@ class UiHelper():
         if self.isGenerating == False:   
             # read parameters for text -> image
             prompt = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
-            if TRANSFER:
-                prompt = translateYouDao(prompt)
+            if TRANSLATE:
+                prompt = translateYouDaoC2E(prompt)
             negative = 'paintings,sketches,low quality,grayscale,urgly face,extra fingers,fewer fingers,watermark'#self.negativeText.get('1.0', END).replace('\n', '').replace('\t', '')
             seedList = [random.randint(0, 9999) for x in range(round(self.drawBatchScale.get()))]
             steps = round(self.qualityScale.get())*10
@@ -1002,7 +1015,7 @@ class UiHelper():
         self.chatOutputText.insert(END, text, 'tagNormal')
         self.chatOutputText.see(END)
 
-    def asyncLoopChat(self):
+    def threadLoopChatResponse(self):
         # import Chat GPT model
         from pyllamacpp.model import Model    
         self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=512)
@@ -1010,6 +1023,8 @@ class UiHelper():
             if self.isChatting == True:
                 # call GPT to generate feedback
                 chatInputString = self.queueTaskChat.get()
+                if TRANSLATE:
+                    chatInputString = translateYouDaoC2E(chatInputString)
                 if chatInputString.isascii():
                     while chatInputString:
                         self.chatInputEntry.config(state=tk.DISABLED)
@@ -1019,9 +1034,10 @@ class UiHelper():
                         chatOutputString = self.chatModel.generate(chatInputString+'\n\n', n_predict=512, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=8)
                         self.chatOutputText.config(state=tk.DISABLED)
                         self.chatInputEntry.config(state=tk.NORMAL)
-                        print(chatInputString.strip() == chatOutputString.strip())
+                        #print(chatInputString.strip() == chatOutputString.strip())
                         if chatInputString.strip() != chatOutputString.strip():
                             chatInputString = None
+                            self.insertChatRecord(chatOutputString)
                 else:
                     self.chatOutputText.config(state=tk.NORMAL)
                     self.chatOutputText.delete('1.0', END)
@@ -1029,7 +1045,51 @@ class UiHelper():
                     self.chatOutputText.insert(END, "Sorry. I don't understand. Would you please speak English? ", 'tagNormal')
                     self.chatOutputText.config(state=tk.DISABLED)
                 self.isChatting = False    
+            else:   # not in chatting response stage, can show history
+                currentChatRecordIndex = self.vChatSelectedRecordIndex.get()
+                if currentChatRecordIndex != self.lastChatRecordIndex:
+                    if (currentChatRecordIndex < len(self.listChatRecordStrings)):
+                        self.chatOutputText.config(state=tk.NORMAL)
+                        self.chatOutputText.delete('1.0', END)
+                        self.chatOutputText.insert(END, '> ', 'tagReact')
+                        chatRecordString = self.listChatRecordStrings[currentChatRecordIndex]
+                        self.chatOutputText.insert(END, chatRecordString, 'tagNormal')
+                        print(chatRecordString)
+                        if TRANSLATE:
+                            chatRecordStringInput, chatRecordStringOutput = chatRecordString.split('\n\n')[0], chatRecordString.split('\n\n')[1]
+                            chatRecordStringInput = chatRecordStringInput.replace('\n', ' ')
+                            chatRecordStringInput = translateYouDaoE2C(chatRecordStringInput)
+                            chatRecordStringOutput = chatRecordStringOutput.replace('\n', ' ')
+                            chatRecordStringOutput = translateYouDaoE2C(chatRecordStringOutput)
+                            print(chatRecordStringInput)
+                            print(chatRecordStringOutput)
+                            self.chatOutputText.insert(END, '\n\n> ', 'tagReact')
+                            self.chatOutputText.insert(END, chatRecordStringInput, 'tagNormal')
+                            self.chatOutputText.insert(END, '\n\n'+chatRecordStringOutput, 'tagNormal')
+                        self.chatOutputText.see(END)    
+                        self.chatOutputText.config(state=tk.DISABLED)
+                    else:
+                        self.chatOutputText.config(state=tk.NORMAL)
+                        self.chatOutputText.delete('1.0', END)
+                        self.chatOutputText.config(state=tk.DISABLED)
+                    self.lastChatRecordIndex = currentChatRecordIndex
             time.sleep(0.5)
+
+    # ---- manage chat history
+    def insertChatRecord(self, string):   
+        if len(self.listChatRecordStrings) == self.maxChatRecordCount:
+            self.listChatRecordStrings.pop(-1)
+        self.listChatRecordStrings.insert(0, string)
+        #when insert image, reset the index for both gallery to force redraw gallery
+        self.vChatSelectedRecordIndex.set(0)
+        self.showChatRecords()
+        self.lastChatRecordIndex = -1
+        
+    def showChatRecords(self):
+        for indexRecord, recordString in enumerate(self.listChatRecordStrings):
+            string = recordString.split('\n')[0]
+            string = string[:15] + '\n' + string[15:30] +  '\n' + string[30:45]
+            self.listChatRecordButtons[indexRecord].configure(text=string)                 
 
 # ### MAIN
 #   
