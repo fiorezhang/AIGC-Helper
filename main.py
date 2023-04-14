@@ -21,8 +21,8 @@ from io import BytesIO
 import subprocess
 import cv2
 
-# ---- translate between English and Chinese, leverage YouDao online service
-from translate import translateYouDaoC2E, translateYouDaoE2C
+# ---- translate between English and Chinese, leverage Helsinki online service
+from translate import translateHelsinkiC2E, translateHelsinkiE2C
 
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
 import stdredirect
@@ -35,8 +35,6 @@ from stablediffusionov import downloadModel, compileModel, generateImage
 # version info
 VERSION = 'v4.3'
 
-# whether use youdao transfer
-TRANSLATE = False
 
 # resolutions
 RES_ORIGINAL = 512
@@ -343,11 +341,18 @@ class UiHelper():
         self.autoHideLabel = ttkbootstrap.Label(self.configOverallFrame, text='Auto hide', bootstyle=INFO)
         self.hideIntroLabel = ttkbootstrap.Label(self.configOverallFrame, text='Move mouse to Right edge of screen to wake') 
         self.autoHideLabel.grid(row=2, column=0, padx=2, pady=2)  
-        self.hideIntroLabel.grid(row=4, column=1, columnspan=3, padx=2, pady=2)  
+        #self.hideIntroLabel.grid(row=4, column=1, columnspan=3, padx=2, pady=2)  
         self.vAutoHide = tk.IntVar()
         self.vAutoHide.set(0)
         self.autoHideCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="AutoHide", variable=self.vAutoHide, width=10, bootstyle="success-round-toggle")
         self.autoHideCheckbutton.grid(row=3, column=1, padx=2, pady=2)
+
+        self.translateLabel = ttkbootstrap.Label(self.configOverallFrame, text='Translate(ZH-EN)', bootstyle=INFO)
+        self.translateLabel.grid(row=4, column=0, padx=2, pady=2)  
+        self.vTranslate = tk.IntVar()
+        self.vTranslate.set(0)
+        self.translateCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="Translate", variable=self.vTranslate, width=10, bootstyle="success-round-toggle")
+        self.translateCheckbutton.grid(row=5, column=1, padx=2, pady=2)    
         
         # ------ for draw image
         self.configDrawFrame = ttkbootstrap.Labelframe(self.configFrame, text='DRAW', width=390, height=200, bootstyle=PRIMARY)
@@ -436,6 +441,7 @@ class UiHelper():
 
         # ------ chat initialize
         # queue for generation tasks   
+        self.isTranslateOn = False
         self.chatModel = None 
         self.isChatting = False
         self.chatLastLine = ""
@@ -878,8 +884,8 @@ class UiHelper():
         if self.isGenerating == False:   
             # read parameters for text -> image
             prompt = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
-            if TRANSLATE:
-                prompt = translateYouDaoC2E(prompt)
+            #if self.isTranslateOn: #compatibility issue with auto-inspiration function
+            #    prompt = translateHelsinkiC2E(prompt)
             negative = 'low quality,grayscale,urgly face,extra fingers,fewer fingers,watermark'#self.negativeText.get('1.0', END).replace('\n', '').replace('\t', '')
             seedList = [random.randint(0, 9999) for x in range(round(self.drawBatchScale.get()))]
             steps = round(self.qualityScale.get())*10
@@ -1056,75 +1062,90 @@ class UiHelper():
         self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=512)
         while True:
             if self.isChatting == True:
+                self.chatInputEntry.config(state=tk.DISABLED)
+                self.chatOutputText.config(state=tk.NORMAL)
                 # call GPT to generate feedback
                 chatInputString = self.queueTaskChat.get()
-                if TRANSLATE:
-                    chatInputString = translateYouDaoC2E(chatInputString)
+                chatInputStringOriginal = chatInputString
+                if self.isTranslateOn:
+                    chatInputString = translateHelsinkiC2E(chatInputString)
                 if chatInputString.isascii():
                     while chatInputString:
-                        self.chatInputEntry.config(state=tk.DISABLED)
-                        self.chatOutputText.config(state=tk.NORMAL)
                         self.chatOutputText.delete('1.0', END)
                         self.chatOutputText.insert(END, '>', 'tagReact')
-                        chatOutputString = self.chatModel.generate(chatInputString+'\n\n', n_predict=512, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=8)
-                        self.chatOutputText.config(state=tk.DISABLED)
-                        self.chatInputEntry.config(state=tk.NORMAL)
-                        #print(chatInputString.strip() == chatOutputString.strip())
-                        if chatInputString.strip() != chatOutputString.strip():
+                        chatGeneratedString = self.chatModel.generate(chatInputString+'\n\n', n_predict=512, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=8)
+                        chatGeneratedStringInput, chatGeneratedStringOutput = chatGeneratedString.split('\n\n')[0], chatGeneratedString.split('\n\n')[1]
+                        chatGeneratedStringTranslated = ""
+                        if self.isTranslateOn:
+                            chatGeneratedStringOutputTranslated = translateHelsinkiE2C(chatGeneratedStringOutput)
+                            self.chatOutputText.insert(END, '\n\n> ', 'tagReact')
+                            self.chatOutputText.insert(END, chatInputStringOriginal, 'tagNormal')
+                            self.chatOutputText.insert(END, '\n\n'+chatGeneratedStringOutputTranslated, 'tagNormal')
+                            self.chatOutputText.see(END)    
+                            chatGeneratedStringTranslated = chatInputStringOriginal + '\n\n' + chatGeneratedStringOutputTranslated
+                        #print(chatInputString.strip() == chatGeneratedString.strip())
+                        if chatInputString.strip() != chatGeneratedString.strip():  #prevent null answer in corner case
                             chatInputString = None
-                            self.insertChatRecord(chatOutputString)
+                    self.insertChatRecord(chatGeneratedString, chatGeneratedStringTranslated)                   
                 else:
                     self.chatOutputText.config(state=tk.NORMAL)
                     self.chatOutputText.delete('1.0', END)
                     self.chatOutputText.insert(END, '>>> ', 'tagWarning')
                     self.chatOutputText.insert(END, "Sorry. I don't understand. Would you please speak English? ", 'tagNormal')
                     self.chatOutputText.config(state=tk.DISABLED)
+                self.chatOutputText.config(state=tk.DISABLED)
+                self.chatInputEntry.config(state=tk.NORMAL)                     
                 self.isChatting = False    
-            else:   # not in chatting response stage, can show history
+            else:   
+                # not in chatting response stage, can show history
                 currentChatRecordIndex = self.vChatSelectedRecordIndex.get()
                 if currentChatRecordIndex != self.lastChatRecordIndex:
                     if (currentChatRecordIndex < len(self.listChatRecordStrings)):
+                        chatRecordStrings = self.listChatRecordStrings[currentChatRecordIndex]
                         self.chatOutputText.config(state=tk.NORMAL)
                         self.chatOutputText.delete('1.0', END)
                         self.chatOutputText.insert(END, '> ', 'tagReact')
-                        chatRecordString = self.listChatRecordStrings[currentChatRecordIndex]
-                        self.chatOutputText.insert(END, chatRecordString, 'tagNormal')
-                        print(chatRecordString)
-                        if TRANSLATE:
-                            chatRecordStringInput, chatRecordStringOutput = chatRecordString.split('\n\n')[0], chatRecordString.split('\n\n')[1]
-                            chatRecordStringInput = chatRecordStringInput.replace('\n', ' ')
-                            chatRecordStringInput = translateYouDaoE2C(chatRecordStringInput)
-                            chatRecordStringOutput = chatRecordStringOutput.replace('\n', ' ')
-                            chatRecordStringOutput = translateYouDaoE2C(chatRecordStringOutput)
-                            print(chatRecordStringInput)
-                            print(chatRecordStringOutput)
+                        self.chatOutputText.insert(END, chatRecordStrings["Native"], 'tagNormal')
+                        if self.isTranslateOn and chatRecordStrings["Translated"] != "":
                             self.chatOutputText.insert(END, '\n\n> ', 'tagReact')
-                            self.chatOutputText.insert(END, chatRecordStringInput, 'tagNormal')
-                            self.chatOutputText.insert(END, '\n\n'+chatRecordStringOutput, 'tagNormal')
+                            self.chatOutputText.insert(END, chatRecordStrings["Translated"], 'tagNormal')
                         self.chatOutputText.see(END)    
-                        self.chatOutputText.config(state=tk.DISABLED)
                     else:
                         self.chatOutputText.config(state=tk.NORMAL)
                         self.chatOutputText.delete('1.0', END)
                         self.chatOutputText.config(state=tk.DISABLED)
                     self.lastChatRecordIndex = currentChatRecordIndex
+                # not in chatting response stage, check translate button status
+                if self.vTranslate.get() == 1:
+                    self.isTranslateOn = True
+                    self.showChatRecords()
+                else:
+                    self.isTranslateOn = False
+                    self.showChatRecords()
             time.sleep(0.5)
 
     # ---- manage chat history
-    def insertChatRecord(self, string):   
+    def insertChatRecord(self, string, stringTranslated):   
         if len(self.listChatRecordStrings) == self.maxChatRecordCount:
             self.listChatRecordStrings.pop(-1)
-        self.listChatRecordStrings.insert(0, string)
+        self.listChatRecordStrings.insert(0, {"Native": string, "Translated":stringTranslated})
         #when insert image, reset the index for both gallery to force redraw gallery
         self.vChatSelectedRecordIndex.set(0)
         self.showChatRecords()
         self.lastChatRecordIndex = -1
         
     def showChatRecords(self):
-        for indexRecord, recordString in enumerate(self.listChatRecordStrings):
-            string = recordString.split('\n')[0]
-            string = string[:15] + '\n' + string[15:30] +  '\n' + string[30:45]
-            self.listChatRecordButtons[indexRecord].configure(text=string)                 
+        for indexRecord, recordStrings in enumerate(self.listChatRecordStrings):
+            if self.isTranslateOn:
+                recordString = recordStrings["Translated"]
+                string = recordString.split('\n')[0]
+                string = string[:8] + '\n' + string[8:16] +  '\n' + string[16:24]
+                self.listChatRecordButtons[indexRecord].configure(text=string)                   
+            else:
+                recordString = recordStrings["Native"]
+                string = recordString.split('\n')[0]
+                string = string[:15] + '\n' + string[15:30] +  '\n' + string[30:45]
+                self.listChatRecordButtons[indexRecord].configure(text=string)   
 
 # ### MAIN
 #   
