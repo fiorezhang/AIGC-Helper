@@ -33,7 +33,7 @@ from stablediffusionov import downloadModel, compileModel, generateImage
 
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v4.2'
+VERSION = 'v4.3'
 
 # whether use youdao transfer
 TRANSLATE = False
@@ -83,7 +83,8 @@ class UiHelper():
         self.drawPreviewFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=270)
         self.drawSettingFrame = ttkbootstrap.Frame(self.drawFrame, width=190, height=230)
         self.drawWorkingFrame = ttkbootstrap.Frame(self.drawFrame, width=200, height=230)
-        self.drawPromptFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=200)
+        self.drawPromptFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=180)
+        
         
         self.drawPreviewFrame.grid(row=0, column=0, columnspan=2)
         self.drawPreviewFrame.grid_propagate(False)
@@ -93,6 +94,8 @@ class UiHelper():
         self.drawWorkingFrame.grid_propagate(False)
         self.drawPromptFrame.grid(row=3, column=0, columnspan=2)
         self.drawPromptFrame.grid_propagate(False)
+        self.drawPromptFrame.columnconfigure(0, weight=1)
+        self.drawPromptFrame.rowconfigure(0, weight=1)
 
         # ------ locate main canvas in preview Frame
         self.drawPreviewImage = ImageTk.PhotoImage(Image.open('ui/ui-welcome.png').resize((RES_PREVIEW, RES_PREVIEW)))
@@ -128,7 +131,7 @@ class UiHelper():
 
       # ------ locate settings in setting Frame     
         self.drawImportLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Import / load image') 
-        self.drawImportButton = ttkbootstrap.Button(self.drawSettingFrame, text='Import', width="5", command=self.drawImportCallback, bootstyle=(INFO, OUTLINE))
+        self.drawImportButton = ttkbootstrap.Button(self.drawSettingFrame, text='Open', width="5", command=self.drawImportCallback, bootstyle=(INFO, OUTLINE))
         self.drawLoadButton = ttkbootstrap.Button(self.drawSettingFrame, text='Load', width="5", command=self.drawLoadCallback, bootstyle=(INFO, OUTLINE))
         self.drawResetButton = ttkbootstrap.Button(self.drawSettingFrame, text='Reset', width="5", command=self.drawResetCallback, bootstyle=(INFO, OUTLINE))
         self.drawMaskLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Clear mask') 
@@ -159,17 +162,20 @@ class UiHelper():
         self.drawBatchStatusLabel.grid(row=7, column=2, padx=2, pady=2)
         
         # ------ locate user input in prompt Frame
-        self.drawPromptText = ttkbootstrap.Text(self.drawPromptFrame, width=50, height=3)    
-        self.drawInitializeButton = ttkbootstrap.Button(self.drawPromptFrame, text='Initialize', width="10", command=self.drawInitializeCallback, bootstyle=(PRIMARY, OUTLINE))
-        self.drawGenerateButton = ttkbootstrap.Button(self.drawPromptFrame, text='Generate', width="10", command=self.drawGenerateCallback, bootstyle=(PRIMARY, OUTLINE))
-        self.drawGenerateProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=200, style='success.Striped.Horizontal.TProgressbar')
-        self.drawGenerateAllProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=200, style='success.Striped.Horizontal.TProgressbar')
+        self.drawPromptText = ttkbootstrap.Text(self.drawPromptFrame)    
+        self.drawPromptText.tag_config('tagInspiration', foreground='lightgreen')
+        self.drawInitializeButton = ttkbootstrap.Button(self.drawPromptFrame, text='Init', width="5", command=self.drawInitializeCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawInspirationButton = ttkbootstrap.Button(self.drawPromptFrame, text='Insp', width="5", command=self.drawInspirationCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawGenerateButton = ttkbootstrap.Button(self.drawPromptFrame, text='Generate', width="14", command=self.drawGenerateCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawGenerateProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=250, style='success.Striped.Horizontal.TProgressbar')
+        self.drawGenerateAllProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=250, style='success.Striped.Horizontal.TProgressbar')
 
-        self.drawPromptText.grid(row=0, column=0, columnspan=2, padx=2, pady=2)
-        self.drawInitializeButton.grid(row=1, column=0, padx=2, pady=2)
-        self.drawGenerateButton.grid(row=2, column=0, padx=2, pady=2)
-        self.drawGenerateProgressbar.grid(row=1, column=1, padx=2, pady=2)
-        self.drawGenerateAllProgressbar.grid(row=2, column=1, padx=2, pady=2)
+        self.drawPromptText.grid(row=0, column=0, columnspan=4, sticky='we', padx=2, pady=2)
+        self.drawInitializeButton.grid(row=1, column=0, sticky='e', padx=2, pady=2)
+        self.drawInspirationButton.grid(row=1, column=1, sticky='e', padx=2, pady=2)
+        self.drawGenerateButton.grid(row=2, column=0, sticky='e', columnspan=2, padx=2, pady=2)
+        self.drawGenerateProgressbar.grid(row=1, column=2, sticky='e', padx=2, pady=2)
+        self.drawGenerateAllProgressbar.grid(row=2, column=2, sticky='e', padx=2, pady=2)
                         
         self.isGenerating = False
 
@@ -177,7 +183,7 @@ class UiHelper():
         self.editPreviewFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=270)
         self.editSettingFrame = ttkbootstrap.Frame(self.editFrame, width=190, height=230)
         self.editWorkingFrame = ttkbootstrap.Frame(self.editFrame, width=200, height=230)
-        self.editZoomFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=200)
+        self.editZoomFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=180)
         
         self.editPreviewFrame.grid(row=0, column=0, columnspan=2)
         self.editPreviewFrame.grid_propagate(False)
@@ -221,8 +227,8 @@ class UiHelper():
         self.editWorkingCanvas.bind('<ButtonRelease-1>', self.editGetRegionEndInfo)
 
         # ------ locate settings in setting Frame     
-        self.editImportLabel = ttkbootstrap.Label(self.editSettingFrame, text='Import / load image') 
-        self.editImportButton = ttkbootstrap.Button(self.editSettingFrame, text='Import', width="5", command=self.editImportCallback, bootstyle=(INFO, OUTLINE))
+        self.editImportLabel = ttkbootstrap.Label(self.editSettingFrame, text='Open / load image') 
+        self.editOpenButton = ttkbootstrap.Button(self.editSettingFrame, text='Open', width="5", command=self.editImportCallback, bootstyle=(INFO, OUTLINE))
         self.editLoadButton = ttkbootstrap.Button(self.editSettingFrame, text='Load', width="5", command=self.editLoadCallback, bootstyle=(INFO, OUTLINE))
         self.editResetButton = ttkbootstrap.Button(self.editSettingFrame, text='Reset', width="5", command=self.editResetCallback, bootstyle=(INFO, OUTLINE))
         self.editSettingNullFrame = ttkbootstrap.Frame(self.editSettingFrame, width=30, height=60)
@@ -231,7 +237,7 @@ class UiHelper():
         self.editMatButton = ttkbootstrap.Button(self.editSettingFrame, text='Mat', width="5", command=self.editMatCallback, bootstyle=(PRIMARY, OUTLINE))
         
         self.editImportLabel.grid(row=0, column=0, columnspan=3, padx=2, pady=2)
-        self.editImportButton.grid(row=1, column=0, padx=2, pady=2)
+        self.editOpenButton.grid(row=1, column=0, padx=2, pady=2)
         self.editLoadButton.grid(row=1, column=1, padx=2, pady=2)
         self.editResetButton.grid(row=1, column=2, padx=2, pady=2)
         self.editSettingNullFrame.grid(row=2, column=0, padx=2, pady=2)
@@ -277,9 +283,9 @@ class UiHelper():
         self.editZoomScale.grid(row=3, column=0, padx=2, pady=2)
         
         # ====== chat page ====== create multiple Frames
-        self.chatOutputFrame = ttkbootstrap.Frame(self.chatFrame, width=270, height=600)
-        self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=120, height=600)
-        self.chatInputFrame = ttkbootstrap.Frame(self.chatFrame, width=390, height=100)
+        self.chatOutputFrame = ttkbootstrap.Frame(self.chatFrame, width=270, height=560)
+        self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=120, height=560)
+        self.chatInputFrame = ttkbootstrap.Frame(self.chatFrame, width=390, height=120)
         
         self.chatOutputFrame.grid(row=0, column=0)
         self.chatOutputFrame.grid_propagate(False)
@@ -419,6 +425,8 @@ class UiHelper():
         self.drawMaskEndX   = 0
         self.drawMaskEndY   = 0
         self.listDrawMaskRect = []
+        self.drawLastInputPrompt = ""
+        self.drawLastInspirationPrompt = ""
         # call generation subprocess (with after method)
         self.asyncLoopGenerate()
         
@@ -872,7 +880,7 @@ class UiHelper():
             prompt = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
             if TRANSLATE:
                 prompt = translateYouDaoC2E(prompt)
-            negative = 'paintings,sketches,low quality,grayscale,urgly face,extra fingers,fewer fingers,watermark'#self.negativeText.get('1.0', END).replace('\n', '').replace('\t', '')
+            negative = 'low quality,grayscale,urgly face,extra fingers,fewer fingers,watermark'#self.negativeText.get('1.0', END).replace('\n', '').replace('\t', '')
             seedList = [random.randint(0, 9999) for x in range(round(self.drawBatchScale.get()))]
             steps = round(self.qualityScale.get())*10
             # get input image and strenth for image -> image
@@ -924,6 +932,33 @@ class UiHelper():
             self.queueTaskGenerate.queue.clear()
             #generateProgressbar['value'] = 0
             #generateAllProgressbar['value'] = 0
+
+    def drawInspirationCallback(self):
+        from transformers import GPT2Tokenizer, GPT2LMHeadModel
+        tokenizer = GPT2Tokenizer.from_pretrained('./chatModels/distilgpt2')
+        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        promptModel = GPT2LMHeadModel.from_pretrained('./chatModels/distilgpt2-stable-diffusion-v2')
+
+        input_ = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
+        if input_ != self.drawLastInspirationPrompt:
+            self.drawLastInputPrompt = input_
+            
+        prompt = self.drawLastInputPrompt
+        temperature = 0.7             # a higher temperature will produce more diverse results, but with a higher risk of less coherent text
+        top_k = 8                     # the number of tokens to sample from at each step
+        max_length = 80               # the maximum number of tokens for the output of the model
+        repitition_penalty = 1.3      # the penalty value for each repetition of a token
+        num_return_sequences=1        # the number of results to generate
+
+        # generate the result with contrastive search
+        input_ids = tokenizer(prompt, return_tensors='pt').input_ids
+        #output = promptModel.generate(input_ids, do_sample=True, temperature=temperature, top_k=top_k, max_length=max_length, num_return_sequences=num_return_sequences, repetition_penalty=repitition_penalty, penalty_alpha=0.6, no_repeat_ngram_size=1, early_stopping=True)
+        output = promptModel.generate(input_ids, do_sample=True, temperature=temperature, top_k=top_k, max_length=max_length, num_return_sequences=num_return_sequences, repetition_penalty=repitition_penalty, early_stopping=True)
+        self.drawLastInspirationPrompt = tokenizer.decode(output[0], skip_special_tokens=True)
+        
+        self.drawPromptText.delete('1.0', END)
+        self.drawPromptText.insert(END, self.drawLastInspirationPrompt, 'tagInspiration')
+
         
     def drawProgressbarCallback(self):
         self.drawGenerateProgressbar['value'] = self.drawGenerateProgressbar['value'] + 1
