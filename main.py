@@ -21,7 +21,7 @@ from io import BytesIO
 import subprocess
 import cv2
 
-# ---- translate between English and Chinese, leverage Helsinki online service
+# ---- translate between English and Chinese, leverage Helsinki offline service
 from translate import translateHelsinkiC2E, translateHelsinkiE2C
 
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
@@ -33,7 +33,7 @@ from stablediffusionov import downloadModel, compileModel, generateImage
 
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v4.3'
+VERSION = 'v4.6'
 
 
 # resolutions
@@ -56,7 +56,7 @@ class UiHelper():
         screen_height = self.root.winfo_screenheight()
         app_width = 400
         app_height = 720#screen_height-80
-        self.root.geometry(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width)+'+0') # size, start position
+        self.root.geometry(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width-10)+'+'+str(min(80, int((screen_height-80-app_height)/2)))) # size, start position
         print(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width)+'+0')
         # set window attibutes
         self.root.resizable(False, False) # resize
@@ -326,13 +326,13 @@ class UiHelper():
         self.chatInputEntry.bind("<Up>", self.chatInputUpCallback)        
         
         # ====    locate configurations in config Frame
+        self.configFrame.columnconfigure(0, weight=1)
         # ------ for overall setting
         self.configOverallFrame = ttkbootstrap.Labelframe(self.configFrame, text='OVERALL', width=390, height=200, bootstyle=PRIMARY)
-        self.configOverallFrame.grid(row=0, column=0)
-        self.configOverallFrame.grid_propagate(False)
+        self.configOverallFrame.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
         
         self.alwaysTopLabel = ttkbootstrap.Label(self.configOverallFrame, text='Always on top', bootstyle=INFO)
-        self.alwaysTopLabel.grid(row=0, column=0, padx=2, pady=2)  
+        self.alwaysTopLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)  
         self.vAlwaysTop = tk.IntVar()
         self.vAlwaysTop.set(0)
         self.alwaysTopCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="AlwaysTop", variable=self.vAlwaysTop, width=10, bootstyle="success-round-toggle")
@@ -340,7 +340,7 @@ class UiHelper():
         
         self.autoHideLabel = ttkbootstrap.Label(self.configOverallFrame, text='Auto hide', bootstyle=INFO)
         self.hideIntroLabel = ttkbootstrap.Label(self.configOverallFrame, text='Move mouse to Right edge of screen to wake') 
-        self.autoHideLabel.grid(row=2, column=0, padx=2, pady=2)  
+        self.autoHideLabel.grid(row=2, column=0, sticky='w', padx=2, pady=2)  
         #self.hideIntroLabel.grid(row=4, column=1, columnspan=3, padx=2, pady=2)  
         self.vAutoHide = tk.IntVar()
         self.vAutoHide.set(0)
@@ -348,7 +348,7 @@ class UiHelper():
         self.autoHideCheckbutton.grid(row=3, column=1, padx=2, pady=2)
 
         self.translateLabel = ttkbootstrap.Label(self.configOverallFrame, text='Translate(ZH-EN)', bootstyle=INFO)
-        self.translateLabel.grid(row=4, column=0, padx=2, pady=2)  
+        self.translateLabel.grid(row=4, column=0, sticky='w', padx=2, pady=2)  
         self.vTranslate = tk.IntVar()
         self.vTranslate.set(0)
         self.translateCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="Translate", variable=self.vTranslate, width=10, bootstyle="success-round-toggle")
@@ -356,11 +356,10 @@ class UiHelper():
         
         # ------ for draw image
         self.configDrawFrame = ttkbootstrap.Labelframe(self.configFrame, text='DRAW', width=390, height=200, bootstyle=PRIMARY)
-        self.configDrawFrame.grid(row=1, column=0)
-        self.configDrawFrame.grid_propagate(False)
+        self.configDrawFrame.grid(row=1, column=0, sticky='ew', padx=2, pady=2)
 
         self.generateLabel = ttkbootstrap.Label(self.configDrawFrame, text='Generation Speed', bootstyle=INFO)
-        self.generateLabel.grid(row=0, column=0, padx=2, pady=2)  
+        self.generateLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)  
         self.qualityLabel = ttkbootstrap.Label(self.configDrawFrame, text='Fast<<    >>Quality') 
         self.qualityScale = ttkbootstrap.Scale(self.configDrawFrame, from_=1, to=4, orient=HORIZONTAL, command=self.configQualityScaleCallback)
         self.configQualityStatusLabel = ttkbootstrap.Label(self.configDrawFrame, text='20')
@@ -372,7 +371,7 @@ class UiHelper():
         #self.timeLabel.grid(row=2, column=0, columnspan=3, padx=2, pady=2)
         
         self.xpuLabel = ttkbootstrap.Label(self.configDrawFrame, text='Select "XPU"', bootstyle=INFO)
-        self.xpuLabel.grid(row=3, column=0, padx=2, pady=2)
+        self.xpuLabel.grid(row=3, column=0, sticky='w', padx=2, pady=2)
         
         self.listXpu = [('CPU  ', 0), ('GPU 0', 1), ('GPU 1', 2), ('AUTO', 3)]
         self.vXpu = tk.IntVar()
@@ -383,11 +382,10 @@ class UiHelper():
 
         # ------ for edit image
         self.configEditFrame = ttkbootstrap.Labelframe(self.configFrame, text='EDIT', width=390, height=200, bootstyle=PRIMARY)
-        self.configEditFrame.grid(row=2, column=0)
-        self.configEditFrame.grid_propagate(False)   
+        self.configEditFrame.grid(row=2, column=0, sticky='ew', padx=2, pady=2)
 
-        self.scaleLabel = ttkbootstrap.Label(self.configEditFrame, text='Scale algorithm', bootstyle=INFO)
-        self.scaleLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.scaleLabel = ttkbootstrap.Label(self.configEditFrame, text='Scaling Algorithm', bootstyle=INFO)
+        self.scaleLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)
         
         self.listScale = [('BICUBIC', 0), ('LANCZOS', 1)]
         self.vScale = tk.IntVar()
@@ -953,7 +951,7 @@ class UiHelper():
         temperature = 0.7             # a higher temperature will produce more diverse results, but with a higher risk of less coherent text
         top_k = 8                     # the number of tokens to sample from at each step
         max_length = 80               # the maximum number of tokens for the output of the model
-        repitition_penalty = 1.3      # the penalty value for each repetition of a token
+        repitition_penalty = 1.2      # the penalty value for each repetition of a token
         num_return_sequences=1        # the number of results to generate
 
         # generate the result with contrastive search
@@ -1059,7 +1057,7 @@ class UiHelper():
     def threadLoopChatResponse(self):
         # import Chat GPT model
         from pyllamacpp.model import Model    
-        self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=512)
+        self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=2048)
         while True:
             if self.isChatting == True:
                 self.chatInputEntry.config(state=tk.DISABLED)
