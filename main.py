@@ -33,7 +33,7 @@ from stablediffusionov import downloadModel, compileModel, generateImage
 
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v4.6'
+VERSION = 'v4.7'
 
 
 # resolutions
@@ -128,13 +128,13 @@ class UiHelper():
         self.drawWorkingCanvas.bind('<ButtonRelease-1>', self.drawGetMaskEndInfo)
 
       # ------ locate settings in setting Frame     
-        self.drawImportLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Import / load image') 
-        self.drawImportButton = ttkbootstrap.Button(self.drawSettingFrame, text='Open', width="5", command=self.drawImportCallback, bootstyle=(INFO, OUTLINE))
-        self.drawLoadButton = ttkbootstrap.Button(self.drawSettingFrame, text='Load', width="5", command=self.drawLoadCallback, bootstyle=(INFO, OUTLINE))
-        self.drawResetButton = ttkbootstrap.Button(self.drawSettingFrame, text='Reset', width="5", command=self.drawResetCallback, bootstyle=(INFO, OUTLINE))
+        self.drawOpenLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Open / load image') 
+        self.drawOpenButton = ttkbootstrap.Button(self.drawSettingFrame, text='Open', width="5", command=self.drawImportCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawLoadButton = ttkbootstrap.Button(self.drawSettingFrame, text='Load', width="5", command=self.drawLoadCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawResetButton = ttkbootstrap.Button(self.drawSettingFrame, text='Reset', width="5", command=self.drawResetCallback, bootstyle=(PRIMARY, OUTLINE))
         self.drawMaskLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Clear mask') 
-        self.drawClearMaskButton = ttkbootstrap.Button(self.drawSettingFrame, text='Clear', width="5", command=self.drawClearMaskCallback, bootstyle=(INFO, OUTLINE))
-        self.drawBackMaskButton = ttkbootstrap.Button(self.drawSettingFrame, text='Back', width="5", command=self.drawBackMaskCallback, bootstyle=(INFO, OUTLINE))
+        self.drawClearMaskButton = ttkbootstrap.Button(self.drawSettingFrame, text='Clear', width="5", command=self.drawClearMaskCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawBackMaskButton = ttkbootstrap.Button(self.drawSettingFrame, text='Back', width="5", command=self.drawBackMaskCallback, bootstyle=(PRIMARY, OUTLINE))
 
         self.drawNoiseLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Variation Ratio: 0.1-0.9') 
         self.drawNoiseStatusLabel = ttkbootstrap.Label(self.drawSettingFrame, text='', width=4) 
@@ -145,17 +145,17 @@ class UiHelper():
         self.drawBatchScale = ttkbootstrap.Scale(self.drawSettingFrame, from_=1, to=4, orient=HORIZONTAL, command=self.drawBatchScaleCallback)
         self.drawBatchScale.set(1)        
         
-        self.drawImportLabel.grid(row=0, column=0, columnspan=3, padx=2, pady=2)
-        self.drawImportButton.grid(row=1, column=0, padx=2, pady=2)
+        self.drawOpenLabel.grid(row=0, column=0, columnspan=3, sticky='w', padx=2, pady=2)
+        self.drawOpenButton.grid(row=1, column=0, padx=2, pady=2)
         self.drawLoadButton.grid(row=1, column=1, padx=2, pady=2)
         self.drawResetButton.grid(row=1, column=2, padx=2, pady=2)
-        self.drawMaskLabel.grid(row=2, column=0, columnspan=3, padx=2, pady=2)
+        self.drawMaskLabel.grid(row=2, column=0, columnspan=3, sticky='w', padx=2, pady=2)
         self.drawClearMaskButton.grid(row=3, column=0, padx=2, pady=2)
         self.drawBackMaskButton.grid(row=3, column=1, padx=2, pady=2)
-        self.drawNoiseLabel.grid(row=4, column=0, columnspan=3, padx=2, pady=2)
+        self.drawNoiseLabel.grid(row=4, column=0, columnspan=3, sticky='w', padx=2, pady=2)
         self.drawNoiseScale.grid(row=5, column=0, columnspan=2, padx=2, pady=2)
         self.drawNoiseStatusLabel.grid(row=5, column=2, padx=2, pady=2)
-        self.drawBatchLabel.grid(row=6, column=0, columnspan=3, padx=2, pady=2)
+        self.drawBatchLabel.grid(row=6, column=0, columnspan=3, sticky='w', padx=2, pady=2)
         self.drawBatchScale.grid(row=7, column=0, columnspan=2, padx=2, pady=2)
         self.drawBatchStatusLabel.grid(row=7, column=2, padx=2, pady=2)
         
@@ -225,22 +225,22 @@ class UiHelper():
         self.editWorkingCanvas.bind('<ButtonRelease-1>', self.editGetRegionEndInfo)
 
         # ------ locate settings in setting Frame     
-        self.editImportLabel = ttkbootstrap.Label(self.editSettingFrame, text='Open / load image') 
-        self.editOpenButton = ttkbootstrap.Button(self.editSettingFrame, text='Open', width="5", command=self.editImportCallback, bootstyle=(INFO, OUTLINE))
-        self.editLoadButton = ttkbootstrap.Button(self.editSettingFrame, text='Load', width="5", command=self.editLoadCallback, bootstyle=(INFO, OUTLINE))
-        self.editResetButton = ttkbootstrap.Button(self.editSettingFrame, text='Reset', width="5", command=self.editResetCallback, bootstyle=(INFO, OUTLINE))
+        self.editOpenLabel = ttkbootstrap.Label(self.editSettingFrame, text='Open / load image') 
+        self.editOpenButton = ttkbootstrap.Button(self.editSettingFrame, text='Open', width="5", command=self.editImportCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.editLoadButton = ttkbootstrap.Button(self.editSettingFrame, text='Load', width="5", command=self.editLoadCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.editResetButton = ttkbootstrap.Button(self.editSettingFrame, text='Reset', width="5", command=self.editResetCallback, bootstyle=(PRIMARY, OUTLINE))
         self.editSettingNullFrame = ttkbootstrap.Frame(self.editSettingFrame, width=30, height=60)
         self.editMatLabel = ttkbootstrap.Label(self.editSettingFrame, text='Cut/Mat from region') 
         self.editCutButton = ttkbootstrap.Button(self.editSettingFrame, text='Cut', width="5", command=self.editCutCallback, bootstyle=(PRIMARY, OUTLINE))
         self.editMatButton = ttkbootstrap.Button(self.editSettingFrame, text='Mat', width="5", command=self.editMatCallback, bootstyle=(PRIMARY, OUTLINE))
         
-        self.editImportLabel.grid(row=0, column=0, columnspan=3, padx=2, pady=2)
+        self.editOpenLabel.grid(row=0, column=0, columnspan=3, sticky='w', padx=2, pady=2)
         self.editOpenButton.grid(row=1, column=0, padx=2, pady=2)
         self.editLoadButton.grid(row=1, column=1, padx=2, pady=2)
         self.editResetButton.grid(row=1, column=2, padx=2, pady=2)
         self.editSettingNullFrame.grid(row=2, column=0, padx=2, pady=2)
         self.editSettingNullFrame.grid_propagate(False)
-        self.editMatLabel.grid(row=3, column=0, columnspan=3, padx=2, pady=2)
+        self.editMatLabel.grid(row=3, column=0, columnspan=3, sticky='w', padx=2, pady=2)
         self.editCutButton.grid(row=4, column=0, padx=2, pady=2)
         self.editMatButton.grid(row=4, column=1, padx=2, pady=2)
         
@@ -265,12 +265,12 @@ class UiHelper():
         self.editZoomScale = ttkbootstrap.Scale(self.editZoomFrame, from_=1, to=4, orient=HORIZONTAL, command=self.editZoomScaleCallback)
         self.editZoomScale.set(2)
         
-        self.editResizeLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.editResizeLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)
         self.editZoomNullFrame.grid(row=0, column=1, rowspan=3, padx=2, pady=2)
         self.editZoomNullFrame.grid_propagate(False)
         self.editWidthLabel.grid(row=0, column=3, padx=2, pady=2)
         self.editHeightLabel.grid(row=0, column=4, padx=2, pady=2)
-        self.editResizeButton.grid(row=1, column=0, padx=2, pady=2)
+        self.editResizeButton.grid(row=1, column=0, sticky='w', padx=2, pady=2)
         self.editInputLabel.grid(row=1, column=2, padx=2, pady=2)
         self.editInputWidthLabel.grid(row=1, column=3, padx=2, pady=2)
         self.editInputHeightLabel.grid(row=1, column=4, padx=2, pady=2)
@@ -304,8 +304,8 @@ class UiHelper():
         self.chatOutputText.tag_config('tagWarning', foreground='red')
         
         # ---- chat history
-        self.chatHistoryLabel = ttkbootstrap.Label(self.chatHistoryFrame, text='Chat History', bootstyle=INFO)
-        self.chatHistoryLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.chatHistoryLabel = ttkbootstrap.Label(self.chatHistoryFrame, text='Chat History')
+        self.chatHistoryLabel.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
 
         self.listChatRecordStrings = []   # generated output strings, could be many
         self.listChatRecordButtons = []   # buttons of history, fixed
