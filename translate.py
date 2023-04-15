@@ -62,7 +62,10 @@ def translateHelsinkiC2E(con):
         translation = model.generate(encoded_text)
         decoded_translation = tokenizer.decode(translation[0], skip_special_tokens=True)
         print(decoded_translation)
-        output = output + decoded_translation
+        if output == "":
+            output = decoded_translation
+        else:
+            output = output + '\n' + decoded_translation
 
     return output
 
@@ -80,7 +83,10 @@ def translateHelsinkiE2C(con):
         translation = model.generate(encoded_text)
         decoded_translation = tokenizer.decode(translation[0], skip_special_tokens=True)
         print(decoded_translation)
-        output = output + decoded_translation
+        if output == "":
+            output = decoded_translation
+        else:
+            output = output + '\n' + decoded_translation
 
     return output
 
