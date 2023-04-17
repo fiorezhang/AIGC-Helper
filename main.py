@@ -26,7 +26,7 @@ from translate import translateHelsinkiC2E, translateHelsinkiE2C
 
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
 import stdredirect
-#mystd = stdredirect.myStdout()
+mystd = stdredirect.myStdout()
 
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
