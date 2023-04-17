@@ -1,5 +1,8 @@
 # -*- coding: UTF-8 -*-
 
+# ==== DEBUG ====
+DEBUG = False
+
 # ==== IMPORT ====
 # ---- UI related libraries 
 import tkinter as tk
@@ -26,7 +29,8 @@ from translate import translateHelsinkiC2E, translateHelsinkiE2C
 
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
 import stdredirect
-mystd = stdredirect.myStdout()
+if not DEBUG:
+    mystd = stdredirect.myStdout()
 
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
@@ -1058,7 +1062,7 @@ class UiHelper():
         if self.isGenerating == False:   
             # read parameters for text -> image
             prompt = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
-            if self.isTranslateOn and not input_.isascii(): 
+            if self.isTranslateOn and not prompt.isascii(): 
                 prompt = translateHelsinkiC2E(prompt).replace('\n', '').replace('\t', '')
                 self.drawPromptText.delete('1.0', END)
                 self.drawPromptText.insert(END, prompt)
