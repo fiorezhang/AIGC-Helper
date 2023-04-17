@@ -14,17 +14,18 @@ import os
 import time
 import random
 import queue
+import threading
 import numpy as np
 import win32clipboard
 from io import BytesIO
 import subprocess
 import cv2
 
-# ---- translate between English and Chinese, leverage YouDao online service
-from translate import translateYouDao
+# ---- translate between English and Chinese, leverage Helsinki offline service
+from translate import translateHelsinkiC2E, translateHelsinkiE2C
 
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
-#import stdredirect
+import stdredirect
 #mystd = stdredirect.myStdout()
 
 # ---- import SD functions
@@ -32,15 +33,13 @@ from stablediffusionov import downloadModel, compileModel, generateImage
 
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v3.0'
+VERSION = 'v4.7'
 
-# whether use youdao transfer
-TRANSFER = False
 
 # resolutions
 RES_ORIGINAL = 512
-RES_PREVIEW  = 384
-RES_GALLERY  = 64
+RES_PREVIEW  = 256
+RES_GALLERY  = 48
 RES_WORKING  = 192
 RES_MASK     = 64
 
@@ -56,49 +55,132 @@ class UiHelper():
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         app_width = 400
-        app_height = screen_height
-        self.root.geometry(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width)+'+0') # size, start position
+        app_height = 720#screen_height-80
+        self.root.geometry(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width-10)+'+'+str(min(80, int((screen_height-80-app_height)/2)))) # size, start position
+        print(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width)+'+0')
         # set window attibutes
         self.root.resizable(False, False) # resize
         self.root.overrideredirect(False) # title lane
         self.root.title('AIGC Helper ' + VERSION)
-        self.root.attributes("-topmost",1) # top window
+        self.root.attributes("-topmost",0) # top window
         self.root.iconphoto(True, ImageTk.PhotoImage(file="ui/ui-blank.png")) # icon
 
         # ====== create notebook panels for different sub-functions
         self.notebook = ttkbootstrap.Notebook(self.root)
+        self.chatFrame = ttkbootstrap.Frame()
+        self.transFrame = ttkbootstrap.Frame()
         self.drawFrame = ttkbootstrap.Frame()
         self.editFrame = ttkbootstrap.Frame()
-        self.chatFrame = ttkbootstrap.Frame()
         self.configFrame = ttkbootstrap.Frame()
+        self.notebook.add(self.chatFrame, text="Chat")
+        self.notebook.add(self.transFrame, text="Trans")
         self.notebook.add(self.drawFrame, text="Draw")
         self.notebook.add(self.editFrame, text="Edit")
-        self.notebook.add(self.chatFrame, text="Chat")
         self.notebook.add(self.configFrame, text="Config")
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        # ====== draw image ====== create multiple Frames
-        self.drawPreviewFrame = ttkbootstrap.Frame(self.drawFrame, width=400, height=400)
-        self.drawGalleryFrame = ttkbootstrap.Frame(self.drawFrame, width=400, height=160)
-        self.drawSettingFrame = ttkbootstrap.Frame(self.drawFrame, width=190, height=230)
-        self.drawWorkingFrame = ttkbootstrap.Frame(self.drawFrame, width=210, height=230)
-        self.drawPromptFrame = ttkbootstrap.Frame(self.drawFrame, width=400, height=240)
+        # ====== chat page ====== create multiple Frames
+        self.chatOutputFrame = ttkbootstrap.Frame(self.chatFrame, width=270, height=560)
+        self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=120, height=560)
+        self.chatInputFrame = ttkbootstrap.Frame(self.chatFrame, width=390, height=120)
         
+        self.chatOutputFrame.grid(row=0, column=0)
+        self.chatOutputFrame.grid_propagate(False)
+        self.chatOutputFrame.columnconfigure(0, weight=1)
+        self.chatOutputFrame.rowconfigure(0, weight=1)
+        self.chatHistoryFrame.grid(row=0, column=1)
+        self.chatHistoryFrame.grid_propagate(False)             
+        self.chatInputFrame.grid(row=1, column=0, columnspan=2)
+        self.chatInputFrame.grid_propagate(False)
+        self.chatInputFrame.columnconfigure(0, weight=1)
+        self.chatInputFrame.rowconfigure(0, weight=1)
+        
+        # ---- chat output
+        self.chatOutputText = ttkbootstrap.Text(self.chatOutputFrame, state=tk.DISABLED) 
+        self.chatOutputText.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        self.chatOutputText.tag_config('tagNormal', foreground='white')
+        self.chatOutputText.tag_config('tagReact', foreground='lightgreen')
+        self.chatOutputText.tag_config('tagWarning', foreground='red')
+        
+        # ---- chat history
+        self.chatHistoryLabel = ttkbootstrap.Label(self.chatHistoryFrame, text='Chat History')
+        self.chatHistoryLabel.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
+
+        self.listChatRecordStrings = []   # generated output strings, could be many
+        self.listChatRecordButtons = []   # buttons of history, fixed
+        self.vChatSelectedRecordIndex = tk.IntVar()  # current which image is selected in <imageRadiobutton>
+        self.vChatSelectedRecordIndex.set(0)
+        
+        # max images in gallery ---- keep sync with draw frame
+        self.maxChatRecordCount = 8
+        for indexRecord in range(self.maxChatRecordCount):
+            self.chatRecordRadiobutton = tk.Radiobutton(self.chatHistoryFrame, text="", width=14, height=3, variable=self.vChatSelectedRecordIndex, value=indexRecord, indicatoron=False)
+            self.chatRecordRadiobutton.grid(row=1+indexRecord, column=0, padx=2, pady=2)
+            self.listChatRecordButtons.append(self.chatRecordRadiobutton)
+        
+        # ---- chat input
+        self.chatInputEntry = ttkbootstrap.Entry(self.chatInputFrame) 
+        self.chatInputEntry.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
+        self.chatInputEntry.bind("<Return>", self.chatInputEnterCallback)
+        self.chatInputEntry.bind("<Up>", self.chatInputUpCallback)    
+
+        # ====== translate page ====== create multiple Frames
+        self.transOutputFrame = ttkbootstrap.Frame(self.transFrame, width=390, height=300)
+        self.transSettingFrame = ttkbootstrap.Frame(self.transFrame, width=390, height=80)
+        self.transInputFrame = ttkbootstrap.Frame(self.transFrame, width=390, height=300)
+        
+        self.transOutputFrame.grid(row=0, column=0)
+        self.transOutputFrame.grid_propagate(False)
+        self.transOutputFrame.columnconfigure(0, weight=1)
+        self.transOutputFrame.rowconfigure(0, weight=1)
+        self.transSettingFrame.grid(row=1, column=0)
+        self.transSettingFrame.grid_propagate(False)  
+        self.transSettingFrame.rowconfigure(0, weight=1)
+        self.transInputFrame.grid(row=2, column=0)
+        self.transInputFrame.grid_propagate(False)
+        self.transInputFrame.columnconfigure(0, weight=1)
+        self.transInputFrame.rowconfigure(0, weight=1)
+        
+        # ---- trans output
+        self.transOutputText = ttkbootstrap.Text(self.transOutputFrame, state=tk.DISABLED) 
+        self.transOutputText.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        self.transOutputText.tag_config('tagNormal', foreground='white')
+        self.transOutputText.tag_config('tagReact', foreground='lightgreen')
+        self.transOutputText.tag_config('tagWarning', foreground='red')
+        
+        # ---- trans setting
+        self.transE2CButton = ttkbootstrap.Button(self.transSettingFrame, text='EN > CN ↑↑', width="10", command=self.transE2CCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.transC2EButton = ttkbootstrap.Button(self.transSettingFrame, text='CN > EN ↑↑', width="10", command=self.transC2ECallback, bootstyle=(PRIMARY, OUTLINE))
+        self.transInputLabel = ttkbootstrap.Label(self.transSettingFrame, text='Input Below: ') 
+        self.transE2CButton.grid(row=0, column=0, padx=2, pady=2)
+        self.transC2EButton.grid(row=0, column=1, padx=2, pady=2)
+        self.transInputLabel.grid(row=1, column=0, columnspan = 2, sticky='w', padx=2, pady=2)
+        
+        # ---- trans input
+        self.transInputText = ttkbootstrap.Text(self.transInputFrame) 
+        self.transInputText.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+
+        # ====== draw image ====== create multiple Frames
+        self.drawPreviewFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=270)
+        self.drawSettingFrame = ttkbootstrap.Frame(self.drawFrame, width=190, height=230)
+        self.drawWorkingFrame = ttkbootstrap.Frame(self.drawFrame, width=200, height=230)
+        self.drawPromptFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=180)
+               
         self.drawPreviewFrame.grid(row=0, column=0, columnspan=2)
         self.drawPreviewFrame.grid_propagate(False)
-        self.drawGalleryFrame.grid(row=1, column=0, columnspan=2)
-        self.drawGalleryFrame.grid_propagate(False)
         self.drawSettingFrame.grid(row=2, column=0)
         self.drawSettingFrame.grid_propagate(False)             
         self.drawWorkingFrame.grid(row=2, column=1)
         self.drawWorkingFrame.grid_propagate(False)
         self.drawPromptFrame.grid(row=3, column=0, columnspan=2)
         self.drawPromptFrame.grid_propagate(False)
+        self.drawPromptFrame.columnconfigure(0, weight=1)
+        self.drawPromptFrame.rowconfigure(0, weight=1)
 
         # ------ locate main canvas in preview Frame
         self.drawPreviewImage = ImageTk.PhotoImage(Image.open('ui/ui-welcome.png').resize((RES_PREVIEW, RES_PREVIEW)))
         self.drawPreviewLabel = ttkbootstrap.Label(self.drawPreviewFrame, image=self.drawPreviewImage)
-        self.drawPreviewLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.drawPreviewLabel.grid(row=0, column=0, rowspan=8, padx=2, pady=2)
         
         self.drawPreviewLabel.bind("<Double-Button-1>", self.drawCopyToClipboard)
 
@@ -109,12 +191,12 @@ class UiHelper():
         self.vDrawSelectedImageIndex.set(0)
         
         # max images in gallery
-        self.maxGalleryImageCount = 10
-        self.countImagePerRow = 5
+        self.maxGalleryImageCount = 8
+        self.countImagePerRow = 2
         for indexImage in range(self.maxGalleryImageCount):
             galleryImage = ImageTk.PhotoImage(Image.open('ui/ui-blank.png').resize((RES_GALLERY, RES_GALLERY)))
-            self.drawGalleryRadiobutton = tk.Radiobutton(self.drawGalleryFrame, image=galleryImage, variable=self.vDrawSelectedImageIndex, value=indexImage, width=RES_GALLERY, height=RES_GALLERY, indicatoron=False)
-            self.drawGalleryRadiobutton.grid(row=0+int(indexImage/self.countImagePerRow), column=int(indexImage%self.countImagePerRow), padx=2, pady=2)
+            self.drawGalleryRadiobutton = tk.Radiobutton(self.drawPreviewFrame, image=galleryImage, variable=self.vDrawSelectedImageIndex, value=indexImage, width=RES_GALLERY, height=RES_GALLERY, indicatoron=False)
+            self.drawGalleryRadiobutton.grid(row=0+int(indexImage/self.countImagePerRow), column=1+int(indexImage%self.countImagePerRow), padx=2, pady=2)
             self.listDrawGalleryImages.append({'button':self.drawGalleryRadiobutton, 'image':galleryImage})
 
         # ------ locate canvas(working in progress) image in canvas Frame
@@ -128,13 +210,13 @@ class UiHelper():
         self.drawWorkingCanvas.bind('<ButtonRelease-1>', self.drawGetMaskEndInfo)
 
       # ------ locate settings in setting Frame     
-        self.drawImportLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Import / load image') 
-        self.drawImportButton = ttkbootstrap.Button(self.drawSettingFrame, text='Import', width="5", command=self.drawImportCallback, bootstyle=(INFO, OUTLINE))
-        self.drawLoadButton = ttkbootstrap.Button(self.drawSettingFrame, text='Load', width="5", command=self.drawLoadCallback, bootstyle=(INFO, OUTLINE))
-        self.drawResetButton = ttkbootstrap.Button(self.drawSettingFrame, text='Reset', width="5", command=self.drawResetCallback, bootstyle=(INFO, OUTLINE))
+        self.drawOpenLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Open / load image') 
+        self.drawOpenButton = ttkbootstrap.Button(self.drawSettingFrame, text='Open', width="5", command=self.drawImportCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawLoadButton = ttkbootstrap.Button(self.drawSettingFrame, text='Load', width="5", command=self.drawLoadCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawResetButton = ttkbootstrap.Button(self.drawSettingFrame, text='Reset', width="5", command=self.drawResetCallback, bootstyle=(PRIMARY, OUTLINE))
         self.drawMaskLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Clear mask') 
-        self.drawClearMaskButton = ttkbootstrap.Button(self.drawSettingFrame, text='Clear', width="5", command=self.drawClearMaskCallback, bootstyle=(INFO, OUTLINE))
-        self.drawBackMaskButton = ttkbootstrap.Button(self.drawSettingFrame, text='Back', width="5", command=self.drawBackMaskCallback, bootstyle=(INFO, OUTLINE))
+        self.drawClearMaskButton = ttkbootstrap.Button(self.drawSettingFrame, text='Clear', width="5", command=self.drawClearMaskCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawBackMaskButton = ttkbootstrap.Button(self.drawSettingFrame, text='Back', width="5", command=self.drawBackMaskCallback, bootstyle=(PRIMARY, OUTLINE))
 
         self.drawNoiseLabel = ttkbootstrap.Label(self.drawSettingFrame, text='Variation Ratio: 0.1-0.9') 
         self.drawNoiseStatusLabel = ttkbootstrap.Label(self.drawSettingFrame, text='', width=4) 
@@ -145,46 +227,46 @@ class UiHelper():
         self.drawBatchScale = ttkbootstrap.Scale(self.drawSettingFrame, from_=1, to=4, orient=HORIZONTAL, command=self.drawBatchScaleCallback)
         self.drawBatchScale.set(1)        
         
-        self.drawImportLabel.grid(row=0, column=0, columnspan=3, padx=2, pady=2)
-        self.drawImportButton.grid(row=1, column=0, padx=2, pady=2)
+        self.drawOpenLabel.grid(row=0, column=0, columnspan=3, sticky='w', padx=2, pady=2)
+        self.drawOpenButton.grid(row=1, column=0, padx=2, pady=2)
         self.drawLoadButton.grid(row=1, column=1, padx=2, pady=2)
         self.drawResetButton.grid(row=1, column=2, padx=2, pady=2)
-        self.drawMaskLabel.grid(row=2, column=0, columnspan=3, padx=2, pady=2)
+        self.drawMaskLabel.grid(row=2, column=0, columnspan=3, sticky='w', padx=2, pady=2)
         self.drawClearMaskButton.grid(row=3, column=0, padx=2, pady=2)
         self.drawBackMaskButton.grid(row=3, column=1, padx=2, pady=2)
-        self.drawNoiseLabel.grid(row=4, column=0, columnspan=3, padx=2, pady=2)
-        self.drawNoiseScale.grid(row=5, column=0, columnspan=2, padx=2, pady=2)
+        self.drawNoiseLabel.grid(row=4, column=0, columnspan=3, sticky='w', padx=2, pady=2)
+        self.drawNoiseScale.grid(row=5, column=0, columnspan=2, sticky='w', padx=2, pady=2)
         self.drawNoiseStatusLabel.grid(row=5, column=2, padx=2, pady=2)
-        self.drawBatchLabel.grid(row=6, column=0, columnspan=3, padx=2, pady=2)
-        self.drawBatchScale.grid(row=7, column=0, columnspan=2, padx=2, pady=2)
+        self.drawBatchLabel.grid(row=6, column=0, columnspan=3, sticky='w', padx=2, pady=2)
+        self.drawBatchScale.grid(row=7, column=0, columnspan=2, sticky='w', padx=2, pady=2)
         self.drawBatchStatusLabel.grid(row=7, column=2, padx=2, pady=2)
         
         # ------ locate user input in prompt Frame
-        self.drawPromptText = ttkbootstrap.ScrolledText(self.drawPromptFrame, width=50, height=3)    
-        self.drawInitializeButton = ttkbootstrap.Button(self.drawPromptFrame, text='Initialize', width="10", command=self.drawInitializeCallback, bootstyle=(PRIMARY, OUTLINE))
-        self.drawGenerateButton = ttkbootstrap.Button(self.drawPromptFrame, text='Generate', width="10", command=self.drawGenerateCallback, bootstyle=(PRIMARY, OUTLINE))
-        self.drawGenerateProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=200, style='success.Striped.Horizontal.TProgressbar')
-        self.drawGenerateAllProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=200, style='success.Striped.Horizontal.TProgressbar')
+        self.drawPromptText = ttkbootstrap.Text(self.drawPromptFrame)    
+        self.drawPromptText.tag_config('tagInspiration', foreground='lightgreen')
+        self.drawInitializeButton = ttkbootstrap.Button(self.drawPromptFrame, text='Init', width="5", command=self.drawInitializeCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawInspirationButton = ttkbootstrap.Button(self.drawPromptFrame, text='Insp', width="5", command=self.drawInspirationCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawGenerateButton = ttkbootstrap.Button(self.drawPromptFrame, text='Generate', width="14", command=self.drawGenerateCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawGenerateProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=250, style='success.Striped.Horizontal.TProgressbar')
+        self.drawGenerateAllProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=250, style='success.Striped.Horizontal.TProgressbar')
 
-        self.drawPromptText.grid(row=0, column=0, columnspan=2, padx=2, pady=2)
-        self.drawInitializeButton.grid(row=1, column=0, padx=2, pady=2)
-        self.drawGenerateButton.grid(row=2, column=0, padx=2, pady=2)
-        self.drawGenerateProgressbar.grid(row=1, column=1, padx=2, pady=2)
-        self.drawGenerateAllProgressbar.grid(row=2, column=1, padx=2, pady=2)
+        self.drawPromptText.grid(row=0, column=0, columnspan=4, sticky='we', padx=2, pady=2)
+        self.drawInitializeButton.grid(row=1, column=0, sticky='e', padx=2, pady=2)
+        self.drawInspirationButton.grid(row=1, column=1, sticky='e', padx=2, pady=2)
+        self.drawGenerateButton.grid(row=2, column=0, sticky='e', columnspan=2, padx=2, pady=2)
+        self.drawGenerateProgressbar.grid(row=1, column=2, sticky='e', padx=2, pady=2)
+        self.drawGenerateAllProgressbar.grid(row=2, column=2, sticky='e', padx=2, pady=2)
                         
         self.isGenerating = False
 
         # ====== edit image ====== create multiple Frames
-        self.editPreviewFrame = ttkbootstrap.Frame(self.editFrame, width=400, height=400)
-        self.editGalleryFrame = ttkbootstrap.Frame(self.editFrame, width=400, height=160)
+        self.editPreviewFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=270)
         self.editSettingFrame = ttkbootstrap.Frame(self.editFrame, width=190, height=230)
-        self.editWorkingFrame = ttkbootstrap.Frame(self.editFrame, width=210, height=230)
-        self.editZoomFrame = ttkbootstrap.Frame(self.editFrame, width=400, height=240)
+        self.editWorkingFrame = ttkbootstrap.Frame(self.editFrame, width=200, height=230)
+        self.editZoomFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=180)
         
         self.editPreviewFrame.grid(row=0, column=0, columnspan=2)
         self.editPreviewFrame.grid_propagate(False)
-        self.editGalleryFrame.grid(row=1, column=0, columnspan=2)
-        self.editGalleryFrame.grid_propagate(False)
         self.editSettingFrame.grid(row=2, column=0)
         self.editSettingFrame.grid_propagate(False)             
         self.editWorkingFrame.grid(row=2, column=1)
@@ -195,7 +277,7 @@ class UiHelper():
         # ------ locate main canvas in preview Frame
         self.editPreviewImage = ImageTk.PhotoImage(Image.open('ui/ui-welcome.png').resize((RES_PREVIEW, RES_PREVIEW)))
         self.editPreviewLabel = ttkbootstrap.Label(self.editPreviewFrame, image=self.editPreviewImage)
-        self.editPreviewLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.editPreviewLabel.grid(row=0, column=0, rowspan=8, padx=2, pady=2)
         
         self.editPreviewLabel.bind("<Double-Button-1>", self.editCopyToClipboard)
         
@@ -210,8 +292,8 @@ class UiHelper():
         #self.countImagePerRow = 5
         for indexImage in range(self.maxGalleryImageCount):
             galleryImage = ImageTk.PhotoImage(Image.open('ui/ui-blank.png').resize((RES_GALLERY, RES_GALLERY)))
-            self.editGalleryRadiobutton = tk.Radiobutton(self.editGalleryFrame, image=galleryImage, variable=self.vEditSelectedImageIndex, value=indexImage, width=RES_GALLERY, height=RES_GALLERY, indicatoron=False)
-            self.editGalleryRadiobutton.grid(row=0+int(indexImage/self.countImagePerRow), column=int(indexImage%self.countImagePerRow), padx=2, pady=2)
+            self.editGalleryRadiobutton = tk.Radiobutton(self.editPreviewFrame, image=galleryImage, variable=self.vEditSelectedImageIndex, value=indexImage, width=RES_GALLERY, height=RES_GALLERY, indicatoron=False)
+            self.editGalleryRadiobutton.grid(row=0+int(indexImage/self.countImagePerRow), column=1+int(indexImage%self.countImagePerRow), padx=2, pady=2)
             self.listEditGalleryImages.append({'button':self.editGalleryRadiobutton, 'image':galleryImage})
         
         # ------ locate canvas(working in progress) image in canvas Frame
@@ -225,22 +307,22 @@ class UiHelper():
         self.editWorkingCanvas.bind('<ButtonRelease-1>', self.editGetRegionEndInfo)
 
         # ------ locate settings in setting Frame     
-        self.editImportLabel = ttkbootstrap.Label(self.editSettingFrame, text='Import / load image') 
-        self.editImportButton = ttkbootstrap.Button(self.editSettingFrame, text='Import', width="5", command=self.editImportCallback, bootstyle=(INFO, OUTLINE))
-        self.editLoadButton = ttkbootstrap.Button(self.editSettingFrame, text='Load', width="5", command=self.editLoadCallback, bootstyle=(INFO, OUTLINE))
-        self.editResetButton = ttkbootstrap.Button(self.editSettingFrame, text='Reset', width="5", command=self.editResetCallback, bootstyle=(INFO, OUTLINE))
+        self.editOpenLabel = ttkbootstrap.Label(self.editSettingFrame, text='Open / load image') 
+        self.editOpenButton = ttkbootstrap.Button(self.editSettingFrame, text='Open', width="5", command=self.editImportCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.editLoadButton = ttkbootstrap.Button(self.editSettingFrame, text='Load', width="5", command=self.editLoadCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.editResetButton = ttkbootstrap.Button(self.editSettingFrame, text='Reset', width="5", command=self.editResetCallback, bootstyle=(PRIMARY, OUTLINE))
         self.editSettingNullFrame = ttkbootstrap.Frame(self.editSettingFrame, width=30, height=60)
         self.editMatLabel = ttkbootstrap.Label(self.editSettingFrame, text='Cut/Mat from region') 
         self.editCutButton = ttkbootstrap.Button(self.editSettingFrame, text='Cut', width="5", command=self.editCutCallback, bootstyle=(PRIMARY, OUTLINE))
         self.editMatButton = ttkbootstrap.Button(self.editSettingFrame, text='Mat', width="5", command=self.editMatCallback, bootstyle=(PRIMARY, OUTLINE))
         
-        self.editImportLabel.grid(row=0, column=0, columnspan=3, padx=2, pady=2)
-        self.editImportButton.grid(row=1, column=0, padx=2, pady=2)
+        self.editOpenLabel.grid(row=0, column=0, columnspan=3, sticky='w', padx=2, pady=2)
+        self.editOpenButton.grid(row=1, column=0, padx=2, pady=2)
         self.editLoadButton.grid(row=1, column=1, padx=2, pady=2)
         self.editResetButton.grid(row=1, column=2, padx=2, pady=2)
         self.editSettingNullFrame.grid(row=2, column=0, padx=2, pady=2)
         self.editSettingNullFrame.grid_propagate(False)
-        self.editMatLabel.grid(row=3, column=0, columnspan=3, padx=2, pady=2)
+        self.editMatLabel.grid(row=3, column=0, columnspan=3, sticky='w', padx=2, pady=2)
         self.editCutButton.grid(row=4, column=0, padx=2, pady=2)
         self.editMatButton.grid(row=4, column=1, padx=2, pady=2)
         
@@ -265,12 +347,12 @@ class UiHelper():
         self.editZoomScale = ttkbootstrap.Scale(self.editZoomFrame, from_=1, to=4, orient=HORIZONTAL, command=self.editZoomScaleCallback)
         self.editZoomScale.set(2)
         
-        self.editResizeLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.editResizeLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)
         self.editZoomNullFrame.grid(row=0, column=1, rowspan=3, padx=2, pady=2)
         self.editZoomNullFrame.grid_propagate(False)
         self.editWidthLabel.grid(row=0, column=3, padx=2, pady=2)
         self.editHeightLabel.grid(row=0, column=4, padx=2, pady=2)
-        self.editResizeButton.grid(row=1, column=0, padx=2, pady=2)
+        self.editResizeButton.grid(row=1, column=0, sticky='w', padx=2, pady=2)
         self.editInputLabel.grid(row=1, column=2, padx=2, pady=2)
         self.editInputWidthLabel.grid(row=1, column=3, padx=2, pady=2)
         self.editInputHeightLabel.grid(row=1, column=4, padx=2, pady=2)
@@ -278,42 +360,55 @@ class UiHelper():
         self.editOutputLabel.grid(row=2, column=2, padx=2, pady=2)
         self.editOutputWidthLabel.grid(row=2, column=3, padx=2, pady=2)
         self.editOutputHeightLabel.grid(row=2, column=4, padx=2, pady=2)        
-        self.editZoomScale.grid(row=3, column=0, padx=2, pady=2)
+        self.editZoomScale.grid(row=3, column=0, sticky='w', padx=2, pady=2)
         
         # ====    locate configurations in config Frame
+        self.configFrame.columnconfigure(0, weight=1)
         # ------ for overall setting
         self.configOverallFrame = ttkbootstrap.Labelframe(self.configFrame, text='OVERALL', width=390, height=200, bootstyle=PRIMARY)
-        self.configOverallFrame.grid(row=0, column=0)
-        self.configOverallFrame.grid_propagate(False)
+        self.configOverallFrame.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
+        
+        self.alwaysTopLabel = ttkbootstrap.Label(self.configOverallFrame, text='Always on top', bootstyle=INFO)
+        self.alwaysTopLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)  
+        self.vAlwaysTop = tk.IntVar()
+        self.vAlwaysTop.set(0)
+        self.alwaysTopCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="AlwaysTop", variable=self.vAlwaysTop, width=10, bootstyle="success-round-toggle")
+        self.alwaysTopCheckbutton.grid(row=1, column=1, padx=2, pady=2)        
         
         self.autoHideLabel = ttkbootstrap.Label(self.configOverallFrame, text='Auto hide', bootstyle=INFO)
         self.hideIntroLabel = ttkbootstrap.Label(self.configOverallFrame, text='Move mouse to Right edge of screen to wake') 
-        
-        self.autoHideLabel.grid(row=0, column=0, padx=2, pady=2)  
-        self.hideIntroLabel.grid(row=1, column=1, columnspan=3, padx=2, pady=2)  
-        
+        self.autoHideLabel.grid(row=2, column=0, sticky='w', padx=2, pady=2)  
+        #self.hideIntroLabel.grid(row=4, column=1, columnspan=3, padx=2, pady=2)  
         self.vAutoHide = tk.IntVar()
         self.vAutoHide.set(0)
         self.autoHideCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="AutoHide", variable=self.vAutoHide, width=10, bootstyle="success-round-toggle")
-        self.autoHideCheckbutton.grid(row=2, column=1, padx=2, pady=2)
+        self.autoHideCheckbutton.grid(row=3, column=1, padx=2, pady=2)
+
+        self.translateLabel = ttkbootstrap.Label(self.configOverallFrame, text='Translate(ZH-EN)', bootstyle=INFO)
+        self.translateLabel.grid(row=4, column=0, sticky='w', padx=2, pady=2)  
+        self.vTranslate = tk.IntVar()
+        self.vTranslate.set(0)
+        self.translateCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="Translate", variable=self.vTranslate, width=10, bootstyle="success-round-toggle")
+        self.translateCheckbutton.grid(row=5, column=1, padx=2, pady=2)    
         
         # ------ for draw image
         self.configDrawFrame = ttkbootstrap.Labelframe(self.configFrame, text='DRAW', width=390, height=200, bootstyle=PRIMARY)
-        self.configDrawFrame.grid(row=1, column=0)
-        self.configDrawFrame.grid_propagate(False)
+        self.configDrawFrame.grid(row=1, column=0, sticky='ew', padx=2, pady=2)
 
         self.generateLabel = ttkbootstrap.Label(self.configDrawFrame, text='Generation Speed', bootstyle=INFO)
-        self.generateLabel.grid(row=0, column=0, padx=2, pady=2)  
+        self.generateLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)  
         self.qualityLabel = ttkbootstrap.Label(self.configDrawFrame, text='Fast<<    >>Quality') 
-        self.qualityScale = ttkbootstrap.Scale(self.configDrawFrame, from_=2, to=5, orient=HORIZONTAL)
+        self.qualityScale = ttkbootstrap.Scale(self.configDrawFrame, from_=1, to=4, orient=HORIZONTAL, command=self.configQualityScaleCallback)
+        self.configQualityStatusLabel = ttkbootstrap.Label(self.configDrawFrame, text='20')
         self.qualityScale.set(2) 
-        self.qualityLabel.grid(row=1, column=1, padx=2, columnspan=2, pady=2)
-        self.qualityScale.grid(row=2, column=1, padx=2, columnspan=2, pady=2)
+        self.qualityLabel.grid(row=1, column=1, columnspan=2, sticky='w', padx=2, pady=2)
+        self.qualityScale.grid(row=2, column=1, columnspan=2, sticky='w', padx=2, pady=2)
+        self.configQualityStatusLabel.grid(row=2, column=3, padx=2, pady=2)
         self.timeLabel = ttkbootstrap.Label(self.configDrawFrame, text='Time: ', width=30) #must have, can hide
         #self.timeLabel.grid(row=2, column=0, columnspan=3, padx=2, pady=2)
         
         self.xpuLabel = ttkbootstrap.Label(self.configDrawFrame, text='Select "XPU"', bootstyle=INFO)
-        self.xpuLabel.grid(row=3, column=0, padx=2, pady=2)
+        self.xpuLabel.grid(row=3, column=0, sticky='w', padx=2, pady=2)
         
         self.listXpu = [('CPU  ', 0), ('GPU 0', 1), ('GPU 1', 2), ('AUTO', 3)]
         self.vXpu = tk.IntVar()
@@ -324,11 +419,10 @@ class UiHelper():
 
         # ------ for edit image
         self.configEditFrame = ttkbootstrap.Labelframe(self.configFrame, text='EDIT', width=390, height=200, bootstyle=PRIMARY)
-        self.configEditFrame.grid(row=2, column=0)
-        self.configEditFrame.grid_propagate(False)   
+        self.configEditFrame.grid(row=2, column=0, sticky='ew', padx=2, pady=2)
 
-        self.scaleLabel = ttkbootstrap.Label(self.configEditFrame, text='Scale algorithm', bootstyle=INFO)
-        self.scaleLabel.grid(row=0, column=0, padx=2, pady=2)
+        self.scaleLabel = ttkbootstrap.Label(self.configEditFrame, text='Scaling Algorithm', bootstyle=INFO)
+        self.scaleLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)
         
         self.listScale = [('BICUBIC', 0), ('LANCZOS', 1)]
         self.vScale = tk.IntVar()
@@ -344,7 +438,27 @@ class UiHelper():
         self.root.bind("<Leave>", self.hideWindow)
         self.isWorking = False
         self.hideTimer = None
-       
+        
+        # ------ ensure output folder exists
+        if not os.path.exists('output'):
+            os.mkdir('output')        
+
+        # ------ chat initialize
+        # queue for generation tasks   
+        self.isTranslateOn = False
+        self.chatModel = None 
+        self.isChatting = False
+        self.chatLastContent = ""
+        self.queueTaskChat = queue.Queue()
+        self.lastChatRecordIndex = -1
+        
+        self.inputThread = threading.Thread(target=self.threadLoopChatResponse)
+        self.inputThread.daemon = True
+        self.inputThread.start()
+        
+        # ------ translate initialize
+        self.transLastContent = ""
+                
         # ------ draw initialize
         # queue for generation tasks    
         self.queueTaskGenerate = queue.Queue()
@@ -367,6 +481,8 @@ class UiHelper():
         self.drawMaskEndX   = 0
         self.drawMaskEndY   = 0
         self.listDrawMaskRect = []
+        self.drawLastInputPrompt = ""
+        self.drawLastInspirationPrompt = ""
         # call generation subprocess (with after method)
         self.asyncLoopGenerate()
         
@@ -374,10 +490,6 @@ class UiHelper():
         self.editRegionRect = {"startX": 1, "startY": 1, "endX": RES_WORKING-2, "endY": RES_WORKING-2, "id": None}
         self.asyncLoopEdit()
             
-        # ------ ensure output folder exists
-        if not os.path.exists('output'):
-            os.mkdir('output')        
-                
         # ======== kick off main loop
         self.root.mainloop()              
 
@@ -392,6 +504,10 @@ class UiHelper():
                 self.root.after_cancel(self.hideTimer)
             self.hideTimer = None
             self.isWorking = True
+        if self.vAlwaysTop.get() == 1:
+            self.root.attributes("-topmost",1)
+        else:
+            self.root.attributes("-topmost",0)
         
     def hideWindow(self, event):
         if self.vAutoHide.get() == 1:
@@ -408,7 +524,7 @@ class UiHelper():
         screenWidth, screenHeight = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         app_x, app_y = self.root.winfo_x(), self.root.winfo_y()
         appWidth, appHeight = self.root.winfo_width(), self.root.winfo_height()
-        if screenWidth - x < 10 and y > 40 and screenHeight - y > 40:    # only enter this area the app is waken up
+        if screenWidth - x < 10 and y > app_y and y < app_y+appHeight:    # only enter this area the app is waken up
             self.showWindow(None)
         else:
             if x < app_x or x > app_x+appWidth or y < app_y or y > app_y+appHeight:
@@ -418,6 +534,142 @@ class UiHelper():
             #print(self.isWorking)
             self.hideWindow(None)
 
+    # ====================================================================
+    # ---- handle input/output in chat panel 
+    def chatInputEnterCallback(self, event):
+        if self.isChatting == False:
+            chatInputString = self.chatInputEntry.get()
+            if chatInputString != '':
+                self.chatInputEntry.delete(0, END)
+                self.queueTaskChat.put(chatInputString)
+                self.isChatting = True
+                self.chatLastContent = chatInputString
+
+    def chatInputUpCallback(self, event):
+        if self.isChatting == False: 
+            chatInputString = self.chatInputEntry.get()
+            if chatInputString == '':
+                self.chatInputEntry.insert(0, self.chatLastContent)
+
+    def chatOutputCallback(self, text):
+        #print(text)
+        self.chatOutputText.insert(END, text, 'tagNormal')
+        self.chatOutputText.see(END)
+
+    def threadLoopChatResponse(self):
+        # import Chat GPT model
+        from pyllamacpp.model import Model    
+        self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=2048)
+        while True:
+            if self.isChatting == True:
+                self.chatInputEntry.config(state=tk.DISABLED)
+                self.chatOutputText.config(state=tk.NORMAL)
+                # call GPT to generate feedback
+                chatInputString = self.queueTaskChat.get()
+                chatInputStringOriginal = chatInputString
+                if self.isTranslateOn:
+                    chatInputString = translateHelsinkiC2E(chatInputString)
+                if chatInputString.isascii():
+                    while chatInputString:
+                        self.chatOutputText.delete('1.0', END)
+                        self.chatOutputText.insert(END, '>', 'tagReact')
+                        chatGeneratedString = self.chatModel.generate(chatInputString+'\n\n', n_predict=512, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=8)
+                        chatGeneratedStringInput, chatGeneratedStringOutput = chatGeneratedString.split('\n\n')[0], chatGeneratedString.split('\n\n')[1]
+                        chatGeneratedStringTranslated = ""
+                        if self.isTranslateOn:
+                            chatGeneratedStringOutputTranslated = translateHelsinkiE2C(chatGeneratedStringOutput)
+                            self.chatOutputText.insert(END, '\n\n> ', 'tagReact')
+                            self.chatOutputText.insert(END, chatInputStringOriginal, 'tagNormal')
+                            self.chatOutputText.insert(END, '\n\n'+chatGeneratedStringOutputTranslated, 'tagNormal')
+                            self.chatOutputText.see(END)    
+                            chatGeneratedStringTranslated = chatInputStringOriginal + '\n\n' + chatGeneratedStringOutputTranslated
+                        #print(chatInputString.strip() == chatGeneratedString.strip())
+                        if chatInputString.strip() != chatGeneratedString.strip():  #prevent null answer in corner case
+                            chatInputString = None
+                    self.insertChatRecord(chatGeneratedString, chatGeneratedStringTranslated)                   
+                else:
+                    self.chatOutputText.config(state=tk.NORMAL)
+                    self.chatOutputText.delete('1.0', END)
+                    self.chatOutputText.insert(END, '>>> ', 'tagWarning')
+                    self.chatOutputText.insert(END, "Sorry. I don't understand. Would you please speak English? ", 'tagNormal')
+                    self.chatOutputText.config(state=tk.DISABLED)
+                self.chatOutputText.config(state=tk.DISABLED)
+                self.chatInputEntry.config(state=tk.NORMAL)                     
+                self.isChatting = False    
+            else:   
+                # not in chatting response stage, can show history
+                currentChatRecordIndex = self.vChatSelectedRecordIndex.get()
+                if currentChatRecordIndex != self.lastChatRecordIndex:
+                    if (currentChatRecordIndex < len(self.listChatRecordStrings)):
+                        chatRecordStrings = self.listChatRecordStrings[currentChatRecordIndex]
+                        self.chatOutputText.config(state=tk.NORMAL)
+                        self.chatOutputText.delete('1.0', END)
+                        self.chatOutputText.insert(END, '> ', 'tagReact')
+                        self.chatOutputText.insert(END, chatRecordStrings["Native"], 'tagNormal')
+                        if self.isTranslateOn and chatRecordStrings["Translated"] != "":
+                            self.chatOutputText.insert(END, '\n\n> ', 'tagReact')
+                            self.chatOutputText.insert(END, chatRecordStrings["Translated"], 'tagNormal')
+                        self.chatOutputText.see(END)    
+                    else:
+                        self.chatOutputText.config(state=tk.NORMAL)
+                        self.chatOutputText.delete('1.0', END)
+                        self.chatOutputText.config(state=tk.DISABLED)
+                    self.lastChatRecordIndex = currentChatRecordIndex
+                # not in chatting response stage, check translate button status
+                if self.vTranslate.get() == 1:
+                    self.isTranslateOn = True
+                    self.showChatRecords()
+                else:
+                    self.isTranslateOn = False
+                    self.showChatRecords()
+            time.sleep(0.5)
+
+    # ---- manage chat history
+    def insertChatRecord(self, string, stringTranslated):   
+        if len(self.listChatRecordStrings) == self.maxChatRecordCount:
+            self.listChatRecordStrings.pop(-1)
+        self.listChatRecordStrings.insert(0, {"Native": string, "Translated":stringTranslated})
+        #when insert image, reset the index for both gallery to force redraw gallery
+        self.vChatSelectedRecordIndex.set(0)
+        self.showChatRecords()
+        self.lastChatRecordIndex = -1
+        
+    def showChatRecords(self):
+        for indexRecord, recordStrings in enumerate(self.listChatRecordStrings):
+            if self.isTranslateOn:
+                recordString = recordStrings["Translated"]
+                string = recordString.split('\n')[0]
+                string = string[:8] + '\n' + string[8:16] +  '\n' + string[16:24]
+                self.listChatRecordButtons[indexRecord].configure(text=string)                   
+            else:
+                recordString = recordStrings["Native"]
+                string = recordString.split('\n')[0]
+                string = string[:15] + '\n' + string[15:30] +  '\n' + string[30:45]
+                self.listChatRecordButtons[indexRecord].configure(text=string)   
+
+    # ====================================================================
+    # ---- handle input/output in translate panel 
+    def transE2CCallback(self):
+        transInputString = self.transInputText.get('1.0', END).strip()
+        if transInputString != '':
+            self.transInputText.config(state=tk.DISABLED)
+            transOutputString = translateHelsinkiE2C(transInputString)
+            self.transOutputText.config(state=tk.NORMAL)
+            self.transOutputText.delete('1.0', END)
+            self.transOutputText.insert(END, transOutputString, 'tagReact')
+            self.transOutputText.config(state=tk.DISABLED)
+            self.transInputText.config(state=tk.NORMAL)
+    
+    def transC2ECallback(self):
+        transInputString = self.transInputText.get('1.0', END).strip()
+        if transInputString != '':
+            self.transInputText.config(state=tk.DISABLED)
+            transOutputString = translateHelsinkiC2E(transInputString)
+            self.transOutputText.config(state=tk.NORMAL)
+            self.transOutputText.delete('1.0', END)
+            self.transOutputText.insert(END, transOutputString, 'tagReact')
+            self.transOutputText.config(state=tk.DISABLED)
+            self.transInputText.config(state=tk.NORMAL)
 
     # ====================================================================
     # ==== actions to buttons
@@ -675,6 +927,10 @@ class UiHelper():
         
     def drawBatchScaleCallback(self, event):
         self.drawBatchStatusLabel.configure(text=str(round(float(event))))
+        
+    # ---- show scale results in config
+    def configQualityScaleCallback(self, event):
+        self.configQualityStatusLabel.configure(text=str(round(float(event)*10)))
 
     # ---- matting function
     def editCutCallback(self):
@@ -802,9 +1058,9 @@ class UiHelper():
         if self.isGenerating == False:   
             # read parameters for text -> image
             prompt = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
-            if TRANSFER:
-                prompt = translateYouDao(prompt)
-            negative = 'paintings,sketches,low quality,grayscale,urgly face,extra fingers,fewer fingers,watermark'#self.negativeText.get('1.0', END).replace('\n', '').replace('\t', '')
+            #if self.isTranslateOn: #compatibility issue with auto-inspiration function
+            #    prompt = translateHelsinkiC2E(prompt)
+            negative = 'low quality,grayscale,urgly face,extra fingers,fewer fingers,watermark'#self.negativeText.get('1.0', END).replace('\n', '').replace('\t', '')
             seedList = [random.randint(0, 9999) for x in range(round(self.drawBatchScale.get()))]
             steps = round(self.qualityScale.get())*10
             # get input image and strenth for image -> image
@@ -856,6 +1112,33 @@ class UiHelper():
             self.queueTaskGenerate.queue.clear()
             #generateProgressbar['value'] = 0
             #generateAllProgressbar['value'] = 0
+
+    def drawInspirationCallback(self):
+        from transformers import GPT2Tokenizer, GPT2LMHeadModel
+        tokenizer = GPT2Tokenizer.from_pretrained('./chatModels/distilgpt2')
+        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        promptModel = GPT2LMHeadModel.from_pretrained('./chatModels/distilgpt2-stable-diffusion-v2')
+
+        input_ = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
+        if input_ != self.drawLastInspirationPrompt:
+            self.drawLastInputPrompt = input_
+            
+        prompt = self.drawLastInputPrompt
+        temperature = 0.7             # a higher temperature will produce more diverse results, but with a higher risk of less coherent text
+        top_k = 8                     # the number of tokens to sample from at each step
+        max_length = 80               # the maximum number of tokens for the output of the model
+        repitition_penalty = 1.2      # the penalty value for each repetition of a token
+        num_return_sequences=1        # the number of results to generate
+
+        # generate the result with contrastive search
+        input_ids = tokenizer(prompt, return_tensors='pt').input_ids
+        #output = promptModel.generate(input_ids, do_sample=True, temperature=temperature, top_k=top_k, max_length=max_length, num_return_sequences=num_return_sequences, repetition_penalty=repitition_penalty, penalty_alpha=0.6, no_repeat_ngram_size=1, early_stopping=True)
+        output = promptModel.generate(input_ids, do_sample=True, temperature=temperature, top_k=top_k, max_length=max_length, num_return_sequences=num_return_sequences, repetition_penalty=repitition_penalty, early_stopping=True)
+        self.drawLastInspirationPrompt = tokenizer.decode(output[0], skip_special_tokens=True)
+        
+        self.drawPromptText.delete('1.0', END)
+        self.drawPromptText.insert(END, self.drawLastInspirationPrompt, 'tagInspiration')
+
         
     def drawProgressbarCallback(self):
         self.drawGenerateProgressbar['value'] = self.drawGenerateProgressbar['value'] + 1
@@ -925,15 +1208,6 @@ class UiHelper():
                 self.lastEditGeneratedImageIndex = currentGeneratedImageIndex
         # iterately call next routine
         self.root.after(intervalLoop, self.asyncLoopEdit)        
-
-    def asyncLoopChat(self):
-        intervalLoop = 100 #ms
-        output = self.processChat.stderr.readline()
-        if output:
-            #self.drawPromptText.insert(END, output.decode('utf-8'))
-            self.drawPromptText.insert(END, '*')
-        if self.processChat.poll() is None:
-            self.root.after(intervalLoop, self.asyncLoopChat)
 
 # ### MAIN
 #   
