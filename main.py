@@ -384,10 +384,10 @@ class UiHelper():
         self.autoHideCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="AutoHide", variable=self.vAutoHide, width=10, bootstyle="success-round-toggle")
         self.autoHideCheckbutton.grid(row=3, column=1, padx=2, pady=2)
 
-        self.translateLabel = ttkbootstrap.Label(self.configOverallFrame, text='Translate(ZH-EN)', bootstyle=INFO)
+        self.translateLabel = ttkbootstrap.Label(self.configOverallFrame, text='Translate(CN-EN)', bootstyle=INFO)
         self.translateLabel.grid(row=4, column=0, sticky='w', padx=2, pady=2)  
         self.vTranslate = tk.IntVar()
-        self.vTranslate.set(0)
+        self.vTranslate.set(1)
         self.translateCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="Translate", variable=self.vTranslate, width=10, bootstyle="success-round-toggle")
         self.translateCheckbutton.grid(row=5, column=1, padx=2, pady=2)    
         
@@ -1058,8 +1058,10 @@ class UiHelper():
         if self.isGenerating == False:   
             # read parameters for text -> image
             prompt = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
-            #if self.isTranslateOn: #compatibility issue with auto-inspiration function
-            #    prompt = translateHelsinkiC2E(prompt)
+            if self.isTranslateOn and not input_.isascii(): 
+                prompt = translateHelsinkiC2E(prompt).replace('\n', '').replace('\t', '')
+                self.drawPromptText.delete('1.0', END)
+                self.drawPromptText.insert(END, prompt)
             negative = 'low quality,grayscale,urgly face,extra fingers,fewer fingers,watermark'#self.negativeText.get('1.0', END).replace('\n', '').replace('\t', '')
             seedList = [random.randint(0, 9999) for x in range(round(self.drawBatchScale.get()))]
             steps = round(self.qualityScale.get())*10
@@ -1120,6 +1122,11 @@ class UiHelper():
         promptModel = GPT2LMHeadModel.from_pretrained('./chatModels/distilgpt2-stable-diffusion-v2')
 
         input_ = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
+        if self.isTranslateOn and not input_.isascii():
+            input_ = translateHelsinkiC2E(input_).replace('\n', '').replace('\t', '')
+            self.drawPromptText.delete('1.0', END)
+            self.drawPromptText.insert(END, input_)
+        
         if input_ != self.drawLastInspirationPrompt:
             self.drawLastInputPrompt = input_
             
@@ -1135,6 +1142,12 @@ class UiHelper():
         #output = promptModel.generate(input_ids, do_sample=True, temperature=temperature, top_k=top_k, max_length=max_length, num_return_sequences=num_return_sequences, repetition_penalty=repitition_penalty, penalty_alpha=0.6, no_repeat_ngram_size=1, early_stopping=True)
         output = promptModel.generate(input_ids, do_sample=True, temperature=temperature, top_k=top_k, max_length=max_length, num_return_sequences=num_return_sequences, repetition_penalty=repitition_penalty, early_stopping=True)
         self.drawLastInspirationPrompt = tokenizer.decode(output[0], skip_special_tokens=True)
+        if not prompt in self.drawLastInspirationPrompt:
+            print(prompt)
+            print(self.drawLastInspirationPrompt)
+            self.drawLastInspirationPrompt = prompt
+        else:
+            print(self.drawLastInspirationPrompt)
         
         self.drawPromptText.delete('1.0', END)
         self.drawPromptText.insert(END, self.drawLastInspirationPrompt, 'tagInspiration')
