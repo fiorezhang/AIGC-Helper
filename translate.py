@@ -56,16 +56,19 @@ def translateHelsinkiC2E(con):
     texts = con.split('\n')
     output = ""
 
-    for text in texts:
-        print(text)
-        encoded_text = tokenizer.encode(text, return_tensors='pt')
-        translation = model.generate(encoded_text)
-        decoded_translation = tokenizer.decode(translation[0], skip_special_tokens=True)
-        print(decoded_translation)
-        if output == "":
-            output = decoded_translation
-        else:
-            output = output + '\n' + decoded_translation
+    try:
+        for text in texts:
+            print(text)
+            encoded_text = tokenizer.encode(text, return_tensors='pt')
+            translation = model.generate(encoded_text)
+            decoded_translation = tokenizer.decode(translation[0], skip_special_tokens=True)
+            print(decoded_translation)
+            if output == "":
+                output = decoded_translation
+            else:
+                output = output + '\n' + decoded_translation
+    except:
+        pass
 
     return output
 
@@ -77,16 +80,19 @@ def translateHelsinkiE2C(con):
     texts = con.split('\n')
     output = ""
 
-    for text in texts:
-        print(text)
-        encoded_text = tokenizer.encode(text, return_tensors='pt')
-        translation = model.generate(encoded_text)
-        decoded_translation = tokenizer.decode(translation[0], skip_special_tokens=True)
-        print(decoded_translation)
-        if output == "":
-            output = decoded_translation
-        else:
-            output = output + '\n' + decoded_translation
+    try:
+        for text in texts:
+            print(text)
+            encoded_text = tokenizer.encode(text, return_tensors='pt')
+            translation = model.generate(encoded_text)
+            decoded_translation = tokenizer.decode(translation[0], skip_special_tokens=True)
+            print(decoded_translation)
+            if output == "":
+                output = decoded_translation
+            else:
+                output = output + '\n' + decoded_translation
+    except:
+        pass
 
     return output
 

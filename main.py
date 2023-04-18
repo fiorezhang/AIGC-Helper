@@ -24,13 +24,18 @@ from io import BytesIO
 import subprocess
 import cv2
 
-# ---- translate between English and Chinese, leverage Helsinki offline service
-from translate import translateHelsinkiC2E, translateHelsinkiE2C
 
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
 import stdredirect
-if not DEBUG:
+if DEBUG == False:
     mystd = stdredirect.myStdout()
+
+# ---- translate between English and Chinese, leverage Helsinki offline service
+from translate import ifWithChinese, translateHelsinkiC2E, translateHelsinkiE2C
+
+# ---- sumarize for English, leverage bart-large-cnn-samsum
+from summary import summarize
+
 
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
@@ -149,15 +154,20 @@ class UiHelper():
         self.transOutputText = ttkbootstrap.Text(self.transOutputFrame, state=tk.DISABLED) 
         self.transOutputText.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
         self.transOutputText.tag_config('tagNormal', foreground='white')
-        self.transOutputText.tag_config('tagReact', foreground='lightgreen')
+        self.transOutputText.tag_config('tagTrans', foreground='lightgreen')
+        self.transOutputText.tag_config('tagSum', foreground='lightblue')
         self.transOutputText.tag_config('tagWarning', foreground='red')
         
         # ---- trans setting
-        self.transE2CButton = ttkbootstrap.Button(self.transSettingFrame, text='EN > CN ↑↑', width="10", command=self.transE2CCallback, bootstyle=(PRIMARY, OUTLINE))
-        self.transC2EButton = ttkbootstrap.Button(self.transSettingFrame, text='CN > EN ↑↑', width="10", command=self.transC2ECallback, bootstyle=(PRIMARY, OUTLINE))
+        self.transE2CButton = ttkbootstrap.Button(self.transSettingFrame, text='EN > CN', width="8", command=self.transE2CCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.transC2EButton = ttkbootstrap.Button(self.transSettingFrame, text='CN > EN', width="8", command=self.transC2ECallback, bootstyle=(PRIMARY, OUTLINE))
+        self.transSumEButton = ttkbootstrap.Button(self.transSettingFrame, text='Sum (EN)', width="8", command=self.transSumECallback, bootstyle=(PRIMARY, OUTLINE))
+        self.transSumCButton = ttkbootstrap.Button(self.transSettingFrame, text='Sum (CN)', width="8", command=self.transSumCCallback, bootstyle=(PRIMARY, OUTLINE))
         self.transInputLabel = ttkbootstrap.Label(self.transSettingFrame, text='Input Below: ') 
         self.transE2CButton.grid(row=0, column=0, padx=2, pady=2)
         self.transC2EButton.grid(row=0, column=1, padx=2, pady=2)
+        self.transSumEButton.grid(row=0, column=2, padx=2, pady=2)
+        self.transSumCButton.grid(row=0, column=3, padx=2, pady=2)
         self.transInputLabel.grid(row=1, column=0, columnspan = 2, sticky='w', padx=2, pady=2)
         
         # ---- trans input
@@ -660,7 +670,11 @@ class UiHelper():
             transOutputString = translateHelsinkiE2C(transInputString)
             self.transOutputText.config(state=tk.NORMAL)
             self.transOutputText.delete('1.0', END)
-            self.transOutputText.insert(END, transOutputString, 'tagReact')
+            if transOutputString != "":
+                self.transOutputText.insert(END, transOutputString, 'tagTrans')
+            else:
+                self.transOutputText.insert(END, ">>> ", 'tagWarning')
+                self.transOutputText.insert(END, "Please split the input text into smaller paragraphs. ", 'tagNormal')
             self.transOutputText.config(state=tk.DISABLED)
             self.transInputText.config(state=tk.NORMAL)
     
@@ -671,7 +685,46 @@ class UiHelper():
             transOutputString = translateHelsinkiC2E(transInputString)
             self.transOutputText.config(state=tk.NORMAL)
             self.transOutputText.delete('1.0', END)
-            self.transOutputText.insert(END, transOutputString, 'tagReact')
+            if transOutputString != "":
+                self.transOutputText.insert(END, transOutputString, 'tagTrans')
+            else:
+                self.transOutputText.insert(END, ">>> ", 'tagWarning')
+                self.transOutputText.insert(END, "Please split the input text into smaller paragraphs. ", 'tagNormal')
+            self.transOutputText.config(state=tk.DISABLED)
+            self.transInputText.config(state=tk.NORMAL)
+
+    def transSumECallback(self):
+        transInputString = self.transInputText.get('1.0', END).strip()
+        if transInputString != '':
+            self.transInputText.config(state=tk.DISABLED)
+            if not transInputString.isascii():
+                transInputString = translateHelsinkiC2E(transInputString)
+            transOutputString = summarize(transInputString)
+            self.transOutputText.config(state=tk.NORMAL)
+            self.transOutputText.delete('1.0', END)
+            if transInputString != "" and transOutputString != "":
+                self.transOutputText.insert(END, transOutputString, 'tagSum')
+            else:
+                self.transOutputText.insert(END, ">>> ", 'tagWarning')
+                self.transOutputText.insert(END, "Please split the input text into smaller paragraphs. ", 'tagNormal')
+            self.transOutputText.config(state=tk.DISABLED)
+            self.transInputText.config(state=tk.NORMAL)
+        
+    def transSumCCallback(self):
+        transInputString = self.transInputText.get('1.0', END).strip()
+        if transInputString != '':
+            self.transInputText.config(state=tk.DISABLED)
+            if not transInputString.isascii():
+                transInputString = translateHelsinkiC2E(transInputString)
+            transOutputString = summarize(transInputString)
+            transOutputString = translateHelsinkiE2C(transOutputString)
+            self.transOutputText.config(state=tk.NORMAL)
+            self.transOutputText.delete('1.0', END)
+            if transInputString != "" and transOutputString != "":
+                self.transOutputText.insert(END, transOutputString, 'tagSum')
+            else:
+                self.transOutputText.insert(END, ">>> ", 'tagWarning')
+                self.transOutputText.insert(END, "Please split the input text into smaller paragraphs. ", 'tagNormal')
             self.transOutputText.config(state=tk.DISABLED)
             self.transInputText.config(state=tk.NORMAL)
 
@@ -1062,7 +1115,7 @@ class UiHelper():
         if self.isGenerating == False:   
             # read parameters for text -> image
             prompt = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
-            if self.isTranslateOn and not prompt.isascii(): 
+            if self.isTranslateOn and ifWithChinese(prompt): 
                 prompt = translateHelsinkiC2E(prompt).replace('\n', '').replace('\t', '')
                 self.drawPromptText.delete('1.0', END)
                 self.drawPromptText.insert(END, prompt)
@@ -1126,7 +1179,7 @@ class UiHelper():
         promptModel = GPT2LMHeadModel.from_pretrained('./chatModels/distilgpt2-stable-diffusion-v2')
 
         input_ = self.drawPromptText.get('1.0', END).replace('\n', '').replace('\t', '')
-        if self.isTranslateOn and not input_.isascii():
+        if self.isTranslateOn and ifWithChinese(input_):
             input_ = translateHelsinkiC2E(input_).replace('\n', '').replace('\t', '')
             self.drawPromptText.delete('1.0', END)
             self.drawPromptText.insert(END, input_)
