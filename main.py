@@ -40,6 +40,8 @@ from summary import summarize
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
 
+from createPPT import create_new_ppt, save_ppt, add_one_slide, add_title, add_text
+
 # ==== GLOBAL MACROS ====
 # version info
 VERSION = 'v4.7'
@@ -93,17 +95,27 @@ class UiHelper():
         self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=120, height=560)
         self.chatInputFrame = ttkbootstrap.Frame(self.chatFrame, width=390, height=120)
         
+        #Edward
+        self.chatCreateButton = ttkbootstrap.Button(self.chatFrame, text='Create PPT', command=self.chatCreatePPTCallback, width="12", bootstyle=(PRIMARY, OUTLINE))
+        self.chatPreviewButton = ttkbootstrap.Button(self.chatFrame, text='Preview PPT', command=self.chatPreviewPPTCallback, width="12", bootstyle=(PRIMARY, OUTLINE))
+
         self.chatOutputFrame.grid(row=0, column=0)
         self.chatOutputFrame.grid_propagate(False)
         self.chatOutputFrame.columnconfigure(0, weight=1)
         self.chatOutputFrame.rowconfigure(0, weight=1)
+
         self.chatHistoryFrame.grid(row=0, column=1)
         self.chatHistoryFrame.grid_propagate(False)             
+
         self.chatInputFrame.grid(row=1, column=0, columnspan=2)
         self.chatInputFrame.grid_propagate(False)
         self.chatInputFrame.columnconfigure(0, weight=1)
         self.chatInputFrame.rowconfigure(0, weight=1)
-        
+
+        #Edward
+        self.chatCreateButton.grid(row=1, column=0, padx=2, pady=2, sticky=S)
+        self.chatPreviewButton.grid(row=1, column=1, padx=2, pady=2, sticky=S)
+
         # ---- chat output
         self.chatOutputText = ttkbootstrap.Text(self.chatOutputFrame, state=tk.DISABLED) 
         self.chatOutputText.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
@@ -660,6 +672,53 @@ class UiHelper():
                 string = recordString.split('\n')[0]
                 string = string[:15] + '\n' + string[15:30] +  '\n' + string[30:45]
                 self.listChatRecordButtons[indexRecord].configure(text=string)   
+
+    #Edward
+    def chatCreatePPTCallback(self):
+        print('\n\nchatCreatePPTCallback')
+
+        ppt_text_a = []
+        ppt = create_new_ppt()
+        recordStrings = self.listChatRecordStrings[self.lastChatRecordIndex]
+        #write English record
+        recordString = recordStrings["Native"]
+        ppt_text_a = recordString.split('\n')
+        ppt_text_len = len(ppt_text_a)
+        ppt_title = ppt_text_a[0]
+
+        #set the first title page
+        curr_slide = add_one_slide(ppt, 0)
+        add_title(curr_slide, ppt_title)
+
+        cc = 2
+        while (cc < ppt_text_len):
+            curr_slide = add_one_slide(ppt, 1)
+            add_title(curr_slide, ppt_title)
+            add_text(curr_slide, 1, ppt_text_a[cc])
+            print(cc, ppt_text_a[cc])
+            cc += 1
+
+        if self.isTranslateOn:
+            recordString = recordStrings["Translated"]
+            ppt_text_a = recordString.split('\n')
+            ppt_text_len = len(ppt_text_a)
+
+            cc = 2
+            while (cc < ppt_text_len):
+                curr_slide = add_one_slide(ppt, 1)
+                add_title(curr_slide, ppt_title)
+                add_text(curr_slide, 1, ppt_text_a[cc])
+                print(cc, ppt_text_a[cc])
+                cc += 1
+
+        curr_time = (str)((int)(time.time()))
+        self.file_full_name = r'C:\ed\GPT\AIGC-Helper\\' + 'test_' + curr_time + '.pptx'
+        print(self.file_full_name)
+        ppt.save(self.file_full_name)
+
+    def chatPreviewPPTCallback(self):
+        os.startfile(self.file_full_name)
+        print('chatPreviewPPTCallback')
 
     # ====================================================================
     # ---- handle input/output in translate panel 
