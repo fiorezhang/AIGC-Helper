@@ -33,12 +33,13 @@ def create_new_ppt():
     prs = Presentation()   # creat a new ppt
     return prs
 
-def save_ppt(prs):
+def save_ppt(prs_r):
+    file_path = os.getcwd() + '\ppt\\'
     curr_time = (str)((int)(time.time()))
-    file_path = r'C:\ed\GPT\AIGC-Helper\\'
     file_name = 'test_' + curr_time + '.pptx'
-    #print(curr_time)
-    prs.save(file_path + file_name)
+    file_full_name = file_path + file_name
+    prs_r.save(file_full_name)
+    return file_full_name
 
 def check_one_slide_layout(slide):
     for shape in slide.placeholders:
@@ -105,22 +106,80 @@ def add_textbox(slide, index_t, text_t):
     text_body.text = text_t
     text_body.vertical_anchor = MSO_ANCHOR.MIDDLE
 
-    cc = 0
-    while(cc < 20):
-        p = text_body.add_paragraph()
-        run = p.add_run()
-        run.text = "带圆点的符号2"
-        cc += 1
-    print('after filled\t', text_body.margin_bottom, text_body.margin_left, text_body.margin_right, text_body.margin_top, text_body.vertical_anchor)    
+'''
+Pt(20) = 65*14 = 910
+'''
 
-
-def add_text(slide, index_t, text_t):
-    text_body = slide.placeholders[index_t].text_frame
+def add_text(slide, index_r, text_r):
+    text_body = slide.placeholders[index_r].text_frame
     text_body.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     text_body.word_wrap = True
-    text_body.text = text_t
-    #text_body.fit_text(max_size=20)
+    text_body.text = text_r
+    text_body.paragraphs[0].font.size = Pt(18)
+    #text_body.fit_text(max_size=Pt(45))
     #text_body.fit_text()
 
+sample_x = {'Native': " a\n\n1)xx2)xx3)xx6)xx", 'Translated': '中\n\n1)中2)\n中3)中6)\n中7)中8)\n中中9)中\n'}
+idx_max = 20
+text_array = []
+
+def text_split(text_r, index_r):
+    index_str = str(index_r)
+    len_text = len(text_r)
+    idx_t = index_r
+    while(idx_t < idx_max):
+        target_text = str(idx_t)
+        len_b = text_r.find(target_text)
+        idx_t += 1
+        if len_b > 0:
+            if text_r[len_b-1] != '1':
+                return len_b, idx_t
+            else:
+                continue
+        elif len_b == 0:
+            return 0, idx_t
+
+    return len_text, idx_max
+
+
+def write_slides(prs_r, text_str_r, text_flag_r):
+    text_body = text_str_r[text_flag_r]
+    text_body.lstrip( )
+    text_array = text_body.split('\n')
+    text_len = 0
+    text_idx = 1
+    text_start = 0
+    text_end = 0
+
+    #set the first title page
+    ppt_title = text_array[0]
+    print(ppt_title)
+    curr_slide = add_one_slide(prs_r, 0)
+    add_title(curr_slide, ppt_title)
+
+    array_idx = 2
+    array_len = len(text_array)
+    print('array_len = ', array_len)
+    while (array_idx < array_len):
+        text_full_len = len(text_array[array_idx])
+        print('text_full_len = ', text_full_len)
+        text_start = 0
+        text_end = 0
+        text_idx = 1
+        while(text_end < text_full_len):
+            text_end, text_idx = text_split(text_array[array_idx], text_idx)
+            print('text_start = ', text_start, 'text_end = ', text_end, 'text_idx = ', text_idx)
+            print(text_array[array_idx][text_start : text_end])
+            if text_end!=0:
+                curr_slide = add_one_slide(prs_r, 1)
+                add_title(curr_slide, ppt_title)
+                add_text(curr_slide, 1, text_array[array_idx][text_start : text_end])
+                text_start = text_end
+        array_idx += 1
+
 if __name__ == '__main__':
-    print(OK)
+    ppt_h = create_new_ppt()
+    write_slides(ppt_h, sample_x, 'Native')
+    write_slides(ppt_h, sample_x, 'Translated')
+    ppt_file_name = save_ppt(ppt_h)
+    print('ppt file is ', ppt_file_name)

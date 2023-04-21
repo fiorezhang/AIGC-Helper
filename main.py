@@ -40,7 +40,7 @@ from summary import summarize
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
 
-from createPPT import create_new_ppt, save_ppt, add_one_slide, add_title, add_text
+from createPPT import create_new_ppt, save_ppt, write_slides
 
 # ==== GLOBAL MACROS ====
 # version info
@@ -676,47 +676,24 @@ class UiHelper():
     #Edward
     def chatCreatePPTCallback(self):
         print('\n\nchatCreatePPTCallback')
+        print(self.isChatting)
+        if self.isChatting == True:
+            return
 
-        ppt_text_a = []
-        ppt = create_new_ppt()
         recordStrings = self.listChatRecordStrings[self.lastChatRecordIndex]
-        #write English record
-        recordString = recordStrings["Native"]
-        ppt_text_a = recordString.split('\n')
-        ppt_text_len = len(ppt_text_a)
-        ppt_title = ppt_text_a[0]
+        print(len(recordStrings))
+        if len(recordStrings) == 0:
+            return
 
-        #set the first title page
-        curr_slide = add_one_slide(ppt, 0)
-        add_title(curr_slide, ppt_title)
-
-        cc = 2
-        while (cc < ppt_text_len):
-            curr_slide = add_one_slide(ppt, 1)
-            add_title(curr_slide, ppt_title)
-            add_text(curr_slide, 1, ppt_text_a[cc])
-            print(cc, ppt_text_a[cc])
-            cc += 1
-
-        if self.isTranslateOn:
-            recordString = recordStrings["Translated"]
-            ppt_text_a = recordString.split('\n')
-            ppt_text_len = len(ppt_text_a)
-
-            cc = 2
-            while (cc < ppt_text_len):
-                curr_slide = add_one_slide(ppt, 1)
-                add_title(curr_slide, ppt_title)
-                add_text(curr_slide, 1, ppt_text_a[cc])
-                print(cc, ppt_text_a[cc])
-                cc += 1
-
-        curr_time = (str)((int)(time.time()))
-        self.file_full_name = r'C:\ed\GPT\AIGC-Helper\\' + 'test_' + curr_time + '.pptx'
-        print(self.file_full_name)
-        ppt.save(self.file_full_name)
+        ppt_h = create_new_ppt()
+        write_slides(ppt_h, recordStrings, 'Native')
+        write_slides(ppt_h, recordStrings, 'Translated')
+        self.file_full_name = save_ppt(ppt_h)
 
     def chatPreviewPPTCallback(self):
+        print(self.isChatting)
+        if self.isChatting == True:
+            return
         os.startfile(self.file_full_name)
         print('chatPreviewPPTCallback')
 
