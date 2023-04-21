@@ -469,6 +469,9 @@ class UiHelper():
         if not os.path.exists('output'):
             os.mkdir('output')        
 
+        if not os.path.exists('ppt'):
+            os.mkdir('ppt')
+
         # ------ chat initialize
         # queue for generation tasks   
         self.isTranslateOn = False
