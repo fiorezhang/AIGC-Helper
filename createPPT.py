@@ -123,16 +123,16 @@ sample_x = {'Native': " a\n\n1)xx2)xx3)xx6)xx", 'Translated': '中\n\n1)中2)\n�
 idx_max = 20
 text_array = []
 
-def text_split(text_r, index_r):
+def text_split(text_r, index_r, start_r):
     index_str = str(index_r)
     len_text = len(text_r)
     idx_t = index_r
     while(idx_t < idx_max):
         target_text = str(idx_t)
-        len_b = text_r.find(target_text)
+        len_b = text_r.find(target_text, start_r)
         idx_t += 1
         if len_b > 0:
-            if text_r[len_b-1] != '1':
+            if (text_r[len_b-1] != '1') and (len_b > (start_r + 2)):  #remove 15 impact 5
                 return len_b, idx_t
             else:
                 continue
@@ -141,6 +141,11 @@ def text_split(text_r, index_r):
 
     return len_text, idx_max
 
+def title_split(text_r, start_r, end_r):
+    target_text = text_r[start_r:end_r]
+    len_text = len(target_text)
+    len_b = target_text.find(',')
+    return len_b
 
 def write_slides(prs_r, text_str_r, text_flag_r):
     text_body = text_str_r[text_flag_r]
@@ -153,24 +158,29 @@ def write_slides(prs_r, text_str_r, text_flag_r):
 
     #set the first title page
     ppt_title = text_array[0]
-    print(ppt_title)
+    #print(ppt_title)
     curr_slide = add_one_slide(prs_r, 0)
     add_title(curr_slide, ppt_title)
 
     array_idx = 2
     array_len = len(text_array)
-    print('array_len = ', array_len)
+    #print('array_len = ', array_len)
     while (array_idx < array_len):
         text_full_len = len(text_array[array_idx])
-        print('text_full_len = ', text_full_len)
+        #print('text_full_len = ', text_full_len)
         text_start = 0
         text_end = 0
         text_idx = 1
         while(text_end < text_full_len):
-            text_end, text_idx = text_split(text_array[array_idx], text_idx)
-            print('text_start = ', text_start, 'text_end = ', text_end, 'text_idx = ', text_idx)
-            print(text_array[array_idx][text_start : text_end])
+            text_end, text_idx = text_split(text_array[array_idx], text_idx, text_start)
+            #print('text_start = ', text_start, 'text_end = ', text_end, 'text_idx = ', text_idx)
+            #print(text_array[array_idx][text_start : text_end])
             if text_end!=0:
+                text_title_start = title_split(text_array[array_idx], text_start, text_end)
+                if text_title_start < 0:
+                    ppt_title = text_array[array_idx][text_start : text_end]
+                else:
+                    ppt_title = text_array[array_idx][text_start : text_title_start]
                 curr_slide = add_one_slide(prs_r, 1)
                 add_title(curr_slide, ppt_title)
                 add_text(curr_slide, 1, text_array[array_idx][text_start : text_end])
