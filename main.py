@@ -130,7 +130,7 @@ class UiHelper():
         self.listChatRecordStrings = []   # generated output strings, could be many
         self.listChatRecordButtons = []   # buttons of history, fixed
         self.vChatSelectedRecordIndex = tk.IntVar()  # current which image is selected in <imageRadiobutton>
-        self.vChatSelectedRecordIndex.set(0)
+        self.vChatSelectedRecordIndex.set(-1)
         
         # max images in gallery ---- keep sync with draw frame
         self.maxChatRecordCount = 8
@@ -675,27 +675,26 @@ class UiHelper():
 
     #Edward
     def chatCreatePPTCallback(self):
-        print('\n\nchatCreatePPTCallback')
-        print(self.isChatting)
         if self.isChatting == True:
             return
 
-        recordStrings = self.listChatRecordStrings[self.lastChatRecordIndex]
-        print(len(recordStrings))
-        if len(recordStrings) == 0:
+        if self.lastChatRecordIndex < 0:
             return
 
+        recordStrings = self.listChatRecordStrings[self.lastChatRecordIndex]
         ppt_h = create_new_ppt()
         write_slides(ppt_h, recordStrings, 'Native')
         write_slides(ppt_h, recordStrings, 'Translated')
         self.file_full_name = save_ppt(ppt_h)
 
     def chatPreviewPPTCallback(self):
-        print(self.isChatting)
         if self.isChatting == True:
             return
+
+        if self.lastChatRecordIndex < 0:
+            return
+
         os.startfile(self.file_full_name)
-        print('chatPreviewPPTCallback')
 
     # ====================================================================
     # ---- handle input/output in translate panel 
