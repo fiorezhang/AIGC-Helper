@@ -30,7 +30,9 @@ def create_new_ppt_by_name(file_name_t):
     return prs
 
 def create_new_ppt():
-    prs = Presentation()   # creat a new ppt
+    #prs = Presentation()   # creat a new ppt
+    tmp_path = os.getcwd() + '\chatModels\\'
+    prs = Presentation(pptx=os.path.join(tmp_path, 'default.pptx'))   # creat a new ppt
     return prs
 
 def save_ppt(prs_r):
