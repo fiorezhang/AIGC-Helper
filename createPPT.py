@@ -8,6 +8,7 @@ from pptx.util import Inches, Pt, Cm
 
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
 import time
+from bisect import bisect_left, bisect_right
 
 #EMU to CM
 img_unit_base = 360000
@@ -86,12 +87,6 @@ def insert_pic(slide, index, img):
     placeholder = slide.placeholders[index]
     pic = placeholder.insert_picture(img)
 
-def add_title(slide, title_text):
-    #check_one_slide_layout(slide)
-    title = slide.shapes.title
-    title.text = title_text
-    #print('add_title\t' + title_text)
-
 def add_textbox(slide, index_t, text_t):
     tb_top = Cm(5.6)
     tb_left = Cm(1)
@@ -109,28 +104,62 @@ def add_textbox(slide, index_t, text_t):
     text_body.vertical_anchor = MSO_ANCHOR.MIDDLE
 
 '''
-Pt(20) = 65*14 = 910
-'''
+text_rang_array=[[288, 324, 420, 484, 625, 729, 1056, 1260, 1600],
+            [240, 285, 357, 396, 525, 621, 891, 1080, 1500]]
+text_font_array=[[20, 19, 17, 16, 14, 13, 11, 10, 8],
+           [20, 19, 17, 16, 14, 13, 11, 10, 8]]
 
-def add_text(slide, index_r, text_r):
+'''
+text_rang_array=[[248, 284, 280, 444, 585, 689, 1016, 1220, 1560],
+            [220, 265, 337, 376, 505, 561, 871, 1060, 1480]]
+text_font_array=[[20, 19, 17, 16, 14, 13, 11, 10, 8],
+           [20, 19, 17, 16, 14, 13, 11, 10, 8]]
+
+text_idx_flag = ')'
+idx_max = 20
+text_array = []
+
+layout_title = 0
+layout_slide = 3
+t_title_sub = 'Edit by AIGC Helper'
+t_text_body = 'Can use AIGC Helper generator pic and then put here?'
+
+#input number of text and english or chinese
+def text_fit(text_num_r, lang_r):
+    print('text_fit:')
+    print('text num is ', text_num_r, 'text lang is ', lang_r)
+    lang_t = (int)(lang_r)
+    if lang_t < 0 and lang_t > 1:    #English
+        print('Text_fit error: english or Chinese?')
+        return -1
+
+    text_num_pos = bisect_left(text_rang_array[lang_t], text_num_r)
+    if(text_num_pos < len(text_rang_array[lang_t])):
+        text_font = text_font_array[lang_t][text_num_pos]
+    print('pos = ', text_num_pos)
+    print('font = ', text_font)
+    return Pt(text_font)
+
+def text_add(slide, index_r, text_r, text_len_r, lang_r, font_flag):
+    print('text_add:')
+    print('Input: len is', text_len_r, 'language is ', lang_r, 'font flag is ', font_flag)
     text_body = slide.placeholders[index_r].text_frame
     text_body.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     text_body.word_wrap = True
     text_body.text = text_r
-    text_body.paragraphs[0].font.size = Pt(18)
+    if font_flag == 0:
+        text_body.paragraphs[0].font.size = Pt(20)
+    else:
+        text_body.paragraphs[0].font.size = text_fit(text_len_r, lang_r)
     #text_body.fit_text(max_size=Pt(45))
     #text_body.fit_text()
-
-sample_x = {'Native': " a\n\n1)xx2)xx3)xx6)xx", 'Translated': '中\n\n1)中2)\n中3)中6)\n中7)中8)\n中中9)中\n'}
-idx_max = 20
-text_array = []
 
 def text_split(text_r, index_r, start_r):
     index_str = str(index_r)
     len_text = len(text_r)
     idx_t = index_r
     while(idx_t < idx_max):
-        target_text = str(idx_t)
+        target_text = str(idx_t) + text_idx_flag
         len_b = text_r.find(target_text, start_r)
         idx_t += 1
         if len_b > 0:
@@ -149,20 +178,31 @@ def title_split(text_r, start_r, end_r):
     len_b = target_text.find(',')
     return len_b
 
+def write_title(ppt_r, title_text):
+    slide = add_one_slide(ppt_h, layout_title)
+    title = slide.shapes.title
+    title.text = title_text
+    subtitle = slide.placeholders[1]
+    subtitle.text = 'Edit by AIGC Helper'
+
 def write_slides(prs_r, text_str_r, text_flag_r):
     text_body = text_str_r[text_flag_r]
     text_body.lstrip( )
     text_array = text_body.split('\n')
-    text_len = 0
-    text_idx = 1
-    text_start = 0
-    text_end = 0
 
-    #set the first title page
-    ppt_title = text_array[0]
-    #print(ppt_title)
-    curr_slide = add_one_slide(prs_r, 0)
-    add_title(curr_slide, ppt_title)
+    if text_flag_r == "Native":
+        Lang_flag = 0
+    elif text_flag_r == "Translated":
+        Lang_flag = 1
+    else:
+        print("write_slides Error: ", text_flag_r)
+        return
+
+    slide = add_one_slide(prs_r, layout_title)
+    title = slide.shapes.title
+    title.text = text_array[0]
+    subtitle = slide.placeholders[1]
+    subtitle.text = 'Edit by AIGC Helper'
 
     array_idx = 2
     array_len = len(text_array)
@@ -178,20 +218,18 @@ def write_slides(prs_r, text_str_r, text_flag_r):
             #print('text_start = ', text_start, 'text_end = ', text_end, 'text_idx = ', text_idx)
             #print(text_array[array_idx][text_start : text_end])
             if text_end!=0:
-                text_title_start = title_split(text_array[array_idx], text_start, text_end)
-                if text_title_start < 0:
-                    ppt_title = text_array[array_idx][text_start : text_end]
-                else:
-                    ppt_title = text_array[array_idx][text_start : text_title_start]
-                curr_slide = add_one_slide(prs_r, 1)
-                add_title(curr_slide, ppt_title)
-                add_text(curr_slide, 1, text_array[array_idx][text_start : text_end])
+                curr_slide = add_one_slide(prs_r, layout_slide)
+                text_add(curr_slide, 1, text_array[array_idx][text_start : text_end], text_end-text_start, Lang_flag, 1)
+                text_add(curr_slide, 2, t_text_body, len(t_text_body), Lang_flag, 0)
                 text_start = text_end
         array_idx += 1
 
 if __name__ == '__main__':
+
     ppt_h = create_new_ppt()
-    write_slides(ppt_h, sample_x, 'Native')
-    write_slides(ppt_h, sample_x, 'Translated')
+    write_title(ppt_h,'this is a demo slides')
+
+    write_slides(ppt_h, sample_y, 'Native')
+    write_slides(ppt_h, sample_y, 'Translated')
     ppt_file_name = save_ppt(ppt_h)
     print('ppt file is ', ppt_file_name)
