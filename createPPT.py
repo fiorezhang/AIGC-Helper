@@ -122,7 +122,7 @@ text_array = []
 layout_title = 0
 layout_slide = 3
 t_title_sub = 'Edit by AIGC Helper'
-t_text_body = 'Can use AIGC Helper generator pic and then put here?'
+t_text_body = 'Can use AIGC Helper generate pic and then put here?'
 
 #input number of text and english or chinese
 def text_fit(text_num_r, lang_r):
