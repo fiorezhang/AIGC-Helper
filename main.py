@@ -24,7 +24,6 @@ from io import BytesIO
 import subprocess
 import cv2
 
-
 # ---- redirect std stream to avoid "pyinstaller -w" issue(stdout/stderr miss handle while no command line), MUST before SD functions' initialization
 import stdredirect
 if DEBUG == False:
@@ -40,7 +39,10 @@ from summary import summarize
 # ---- import SD functions
 from stablediffusionov import downloadModel, compileModel, generateImage
 
+from shutil import copyfile
 from createPPT import create_new_ppt, save_ppt, write_slides
+import backgroundremover.utilities
+from backgroundremover.bg import remove
 
 # ==== GLOBAL MACROS ====
 # version info
@@ -1054,7 +1056,7 @@ class UiHelper():
             #    pass
             #    print("editCutCallback ERROR")
                 
-    def editMatCallback(self):
+    def editMatCallback_org(self):
         if self.editWorkingFile != "":
             if True:
                 # read image, define mask and models
@@ -1090,6 +1092,64 @@ class UiHelper():
             #except:
             #    pass
             #    print("editMatCallback ERROR")
+    def editMatCallback(self):
+        if self.editWorkingFile != "":
+            if True:
+                #copy the u2net model to specific folder
+                u2net_path = os.path.expanduser(os.path.join("~", ".u2net"))
+                curr_path = os.getcwd() + '\\' + 'chatModels' + '\\' + 'u2net' + '\\'
+                if os.path.exists(u2net_path) is False:
+                    os.mkdir(u2net_path)
+                curr_path_u2neth = curr_path + '\\' + 'u2net_human_seg.pth'
+                u2net_path_u2neth = u2net_path + '\\' + 'u2net_human_seg.pth'
+                copyfile(curr_path_u2neth, u2net_path_u2neth)
+
+                # crop image, and save temp image
+                regionRect = self.editRegionRect
+                startX, startY, endX, endY = regionRect["startX"], regionRect["startY"], regionRect["endX"], regionRect["endY"]
+
+                if (startX == 1 and startY == 1 and endX == RES_WORKING -2 and endY == RES_WORKING -2) or (startX == endX and startY == endY):
+                     temp_savedImageFile = self.editWorkingFile
+                else:
+                    img_cv = cv2.imread(self.editWorkingFile)
+                    img_h = img_cv.shape[0]
+                    img_w = img_cv.shape[1]
+                    if img_h > img_w:
+                        base_scale = img_h / RES_WORKING
+                    else:
+                        base_sale = img_w / RES_WORKING
+
+                    dst_x_s = (int)(base_scale * startX)
+                    dst_y_s = (int)(base_scale * startY)
+                    dst_x_e = (int)(base_scale * endX)
+                    dst_y_e = (int)(base_scale * endY)
+
+                    img_crop = img_cv[dst_y_s:dst_y_e, dst_x_s:dst_x_e]
+                    str_image = '_temp_time_'+ str(int(time.time()))
+                    temp_savedImageFile = 'output/' + str(str_image)+'.png'
+                    print("saved file is ", temp_savedImageFile)
+                    cv2.imwrite(temp_savedImageFile, img_crop)
+
+                # read image, define mask and models
+                in_file_handle = open(temp_savedImageFile, 'rb')
+                in_file_data = in_file_handle.read()
+
+                parameter_model = "u2net_human_seg"
+                parameter_foreground_threshold = 240
+                parameter_background_threshold = 10
+                parameter_erode_size = 10
+                parameter_base_size = 1000
+
+                out_file_data = remove(in_file_data, parameter_model, False,
+                    parameter_foreground_threshold, parameter_background_threshold,
+                    parameter_erode_size, parameter_base_size)
+
+                str_image = '_matting_time_'+str(int(time.time()))
+                savedImageFile = 'output/' + str(str_image)+'.png'
+                out_file_handle = open(savedImageFile, 'wb')
+                out_file_handle.write(out_file_data)
+                out_file_handle.close()
+                self.insertGeneratedImage(savedImageFile)
 
     # ---- change resolution targets and scale in edit    
     def editResizeCallback(self):
