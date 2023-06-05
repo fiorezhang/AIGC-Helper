@@ -46,7 +46,7 @@ from backgroundremover.bg import remove
 
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v4.7'
+VERSION = 'v4.8'
 
 
 # resolutions
@@ -68,7 +68,7 @@ class UiHelper():
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         app_width = 400
-        app_height = 720#screen_height-80
+        app_height = 640#screen_height-80
         self.root.geometry(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width-10)+'+'+str(min(80, int((screen_height-80-app_height)/2)))) # size, start position
         print(str(app_width)+'x'+str(app_height)+'+'+str(screen_width-app_width)+'+0')
         # set window attibutes
@@ -93,13 +93,10 @@ class UiHelper():
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
         # ====== chat page ====== create multiple Frames
-        self.chatOutputFrame = ttkbootstrap.Frame(self.chatFrame, width=270, height=560)
-        self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=120, height=560)
+        self.chatOutputFrame = ttkbootstrap.Frame(self.chatFrame, width=270, height=480)
+        self.chatHistoryFrame = ttkbootstrap.Frame(self.chatFrame, width=120, height=480)
         self.chatInputFrame = ttkbootstrap.Frame(self.chatFrame, width=390, height=120)
         
-        #Edward
-        self.chatCreateButton = ttkbootstrap.Button(self.chatFrame, text='Create PPT', command=self.chatCreatePPTCallback, width="12", bootstyle=(PRIMARY, OUTLINE))
-        self.chatPreviewButton = ttkbootstrap.Button(self.chatFrame, text='Preview PPT', command=self.chatPreviewPPTCallback, width="12", bootstyle=(PRIMARY, OUTLINE))
 
         self.chatOutputFrame.grid(row=0, column=0)
         self.chatOutputFrame.grid_propagate(False)
@@ -113,10 +110,6 @@ class UiHelper():
         self.chatInputFrame.grid_propagate(False)
         self.chatInputFrame.columnconfigure(0, weight=1)
         self.chatInputFrame.rowconfigure(0, weight=1)
-
-        #Edward
-        self.chatCreateButton.grid(row=1, column=0, padx=2, pady=2, sticky=S)
-        self.chatPreviewButton.grid(row=1, column=1, padx=2, pady=2, sticky=S)
 
         # ---- chat output
         self.chatOutputText = ttkbootstrap.Text(self.chatOutputFrame, state=tk.DISABLED) 
@@ -135,7 +128,7 @@ class UiHelper():
         self.vChatSelectedRecordIndex.set(-1)
         
         # max images in gallery ---- keep sync with draw frame
-        self.maxChatRecordCount = 8
+        self.maxChatRecordCount = 7
         for indexRecord in range(self.maxChatRecordCount):
             self.chatRecordRadiobutton = tk.Radiobutton(self.chatHistoryFrame, text="", width=14, height=3, variable=self.vChatSelectedRecordIndex, value=indexRecord, indicatoron=False)
             self.chatRecordRadiobutton.grid(row=1+indexRecord, column=0, padx=2, pady=2)
@@ -143,14 +136,20 @@ class UiHelper():
         
         # ---- chat input
         self.chatInputEntry = ttkbootstrap.Entry(self.chatInputFrame) 
-        self.chatInputEntry.grid(row=0, column=0, sticky='ew', padx=2, pady=2)
+        self.chatInputEntry.grid(row=0, column=0, columnspan=2, sticky='ew', padx=2, pady=2)
         self.chatInputEntry.bind("<Return>", self.chatInputEnterCallback)
         self.chatInputEntry.bind("<Up>", self.chatInputUpCallback)    
+        #Edward
+        self.chatCreateButton = ttkbootstrap.Button(self.chatInputFrame, text='Create PPT', command=self.chatCreatePPTCallback, width="12", bootstyle=(PRIMARY, OUTLINE))
+        self.chatPreviewButton = ttkbootstrap.Button(self.chatInputFrame, text='Preview PPT', command=self.chatPreviewPPTCallback, width="12", bootstyle=(PRIMARY, OUTLINE))
+        self.chatCreateButton.grid(row=1, column=0, padx=2, pady=2, sticky='w')
+        self.chatPreviewButton.grid(row=1, column=1, padx=2, pady=2, sticky='w')
+
 
         # ====== translate page ====== create multiple Frames
-        self.transOutputFrame = ttkbootstrap.Frame(self.transFrame, width=390, height=300)
+        self.transOutputFrame = ttkbootstrap.Frame(self.transFrame, width=390, height=260)
         self.transSettingFrame = ttkbootstrap.Frame(self.transFrame, width=390, height=80)
-        self.transInputFrame = ttkbootstrap.Frame(self.transFrame, width=390, height=300)
+        self.transInputFrame = ttkbootstrap.Frame(self.transFrame, width=390, height=260)
         
         self.transOutputFrame.grid(row=0, column=0)
         self.transOutputFrame.grid_propagate(False)
@@ -192,7 +191,7 @@ class UiHelper():
         self.drawPreviewFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=270)
         self.drawSettingFrame = ttkbootstrap.Frame(self.drawFrame, width=190, height=230)
         self.drawWorkingFrame = ttkbootstrap.Frame(self.drawFrame, width=200, height=230)
-        self.drawPromptFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=180)
+        self.drawPromptFrame = ttkbootstrap.Frame(self.drawFrame, width=390, height=100)
                
         self.drawPreviewFrame.grid(row=0, column=0, columnspan=2)
         self.drawPreviewFrame.grid_propagate(False)
@@ -270,20 +269,20 @@ class UiHelper():
         self.drawBatchStatusLabel.grid(row=7, column=2, padx=2, pady=2)
         
         # ------ locate user input in prompt Frame
-        self.drawPromptText = ttkbootstrap.Text(self.drawPromptFrame)    
+        self.drawPromptText = ttkbootstrap.Text(self.drawPromptFrame, height=2)    
         self.drawPromptText.tag_config('tagInspiration', foreground='lightgreen')
-        self.drawInitializeButton = ttkbootstrap.Button(self.drawPromptFrame, text='Init', width="5", command=self.drawInitializeCallback, bootstyle=(PRIMARY, OUTLINE))
-        self.drawInspirationButton = ttkbootstrap.Button(self.drawPromptFrame, text='Insp', width="5", command=self.drawInspirationCallback, bootstyle=(PRIMARY, OUTLINE))
-        self.drawGenerateButton = ttkbootstrap.Button(self.drawPromptFrame, text='Generate', width="14", command=self.drawGenerateCallback, bootstyle=(PRIMARY, OUTLINE))
-        self.drawGenerateProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=250, style='success.Striped.Horizontal.TProgressbar')
-        self.drawGenerateAllProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=250, style='success.Striped.Horizontal.TProgressbar')
+        self.drawInitializeButton = ttkbootstrap.Button(self.drawPromptFrame, text='Init', width="4", command=self.drawInitializeCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawInspirationButton = ttkbootstrap.Button(self.drawPromptFrame, text='Insp', width="4", command=self.drawInspirationCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawGenerateButton = ttkbootstrap.Button(self.drawPromptFrame, text='Generate', width="8", command=self.drawGenerateCallback, bootstyle=(PRIMARY, OUTLINE))
+        self.drawGenerateProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=95, style='success.Striped.Horizontal.TProgressbar')
+        self.drawGenerateAllProgressbar = ttkbootstrap.Progressbar(self.drawPromptFrame, length=95, style='success.Striped.Horizontal.TProgressbar')
 
-        self.drawPromptText.grid(row=0, column=0, columnspan=4, sticky='we', padx=2, pady=2)
+        self.drawPromptText.grid(row=0, column=0, columnspan=5, sticky='we', padx=2, pady=2)
         self.drawInitializeButton.grid(row=1, column=0, sticky='e', padx=2, pady=2)
-        self.drawInspirationButton.grid(row=1, column=1, sticky='e', padx=2, pady=2)
-        self.drawGenerateButton.grid(row=2, column=0, sticky='e', columnspan=2, padx=2, pady=2)
-        self.drawGenerateProgressbar.grid(row=1, column=2, sticky='e', padx=2, pady=2)
-        self.drawGenerateAllProgressbar.grid(row=2, column=2, sticky='e', padx=2, pady=2)
+        self.drawInspirationButton.grid(row=1, column=1, padx=2, pady=2)
+        self.drawGenerateButton.grid(row=1, column=2, padx=2, pady=2)
+        self.drawGenerateProgressbar.grid(row=1, column=3, padx=2, pady=2)
+        self.drawGenerateAllProgressbar.grid(row=1, column=4, padx=2, pady=2)
                         
         self.isGenerating = False
 
@@ -291,7 +290,7 @@ class UiHelper():
         self.editPreviewFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=270)
         self.editSettingFrame = ttkbootstrap.Frame(self.editFrame, width=190, height=230)
         self.editWorkingFrame = ttkbootstrap.Frame(self.editFrame, width=200, height=230)
-        self.editZoomFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=180)
+        self.editZoomFrame = ttkbootstrap.Frame(self.editFrame, width=390, height=100)
         
         self.editPreviewFrame.grid(row=0, column=0, columnspan=2)
         self.editPreviewFrame.grid_propagate(False)
@@ -449,16 +448,25 @@ class UiHelper():
         self.configEditFrame = ttkbootstrap.Labelframe(self.configFrame, text='EDIT', width=390, height=200, bootstyle=PRIMARY)
         self.configEditFrame.grid(row=2, column=0, sticky='ew', padx=2, pady=2)
 
+        self.matLabel = ttkbootstrap.Label(self.configEditFrame, text='Matting Config', bootstyle=INFO)
+        self.matLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        
+        self.listMat = [('NORMAL', 0), ('HUMAN', 1)]
+        self.vMat = tk.IntVar()
+        self.vMat.set(1)
+        for mat, num in self.listMat:
+            self.matRadiobutton = tk.Radiobutton(self.configEditFrame, text=mat, variable=self.vMat, value=num, width=10, indicatoron=False)
+            self.matRadiobutton.grid(row=1, column=1+num, padx=2, pady=2)          
+
         self.scaleLabel = ttkbootstrap.Label(self.configEditFrame, text='Scaling Algorithm', bootstyle=INFO)
-        self.scaleLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)
+        self.scaleLabel.grid(row=2, column=0, sticky='w', padx=2, pady=2)
         
         self.listScale = [('BICUBIC', 0), ('LANCZOS', 1)]
         self.vScale = tk.IntVar()
         self.vScale.set(1)
         for scale, num in self.listScale:
             self.scaleRadiobutton = tk.Radiobutton(self.configEditFrame, text=scale, variable=self.vScale, value=num, width=10, indicatoron=False)
-            self.scaleRadiobutton.grid(row=1, column=1+num, padx=2, pady=2)          
-          
+            self.scaleRadiobutton.grid(row=3, column=1+num, padx=2, pady=2)                    
         
         # ======== initialize varialbs and subprocess
         # ------ bind keys to show or hide window
@@ -1099,13 +1107,20 @@ class UiHelper():
     def editMatCallback(self):
         if self.editWorkingFile != "":
             if True:
+                #decide which u2net model will be used
+                matconfig = self.vMat.get()
+                if matconfig == 0:  #NORMAL
+                    u2net_model = 'u2net.pth'
+                elif matconfig == 1:    #HUMAN
+                    u2net_model = 'u2net_human_seg.pth'
+            
                 #copy the u2net model to specific folder
                 u2net_path = os.path.expanduser(os.path.join("~", ".u2net"))
                 curr_path = os.getcwd() + '\\' + 'chatModels' + '\\' + 'u2net' + '\\'
                 if os.path.exists(u2net_path) is False:
                     os.mkdir(u2net_path)
-                curr_path_u2neth = curr_path + '\\' + 'u2net_human_seg.pth'
-                u2net_path_u2neth = u2net_path + '\\' + 'u2net_human_seg.pth'
+                curr_path_u2neth = curr_path + '\\' + u2net_model
+                u2net_path_u2neth = u2net_path + '\\' + u2net_model
                 copyfile(curr_path_u2neth, u2net_path_u2neth)
 
                 # crop image, and save temp image
@@ -1142,7 +1157,8 @@ class UiHelper():
                 in_file_handle = open(temp_savedImageFile, 'rb')
                 in_file_data = in_file_handle.read()
 
-                parameter_model = "u2net_human_seg"
+                parameter_model = os.path.splitext(u2net_model)[0]
+                print(parameter_model)
                 parameter_foreground_threshold = 240
                 parameter_background_threshold = 10
                 parameter_erode_size = 10
