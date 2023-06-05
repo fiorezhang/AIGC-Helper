@@ -896,7 +896,7 @@ class UiHelper():
                 self.insertGeneratedImage(savedImageFile)
                 self.editWorkingImage = ImageTk.PhotoImage(self._padImage(Image.open(self.editWorkingFile), (RES_WORKING, RES_WORKING)))
                 self.editWorkingCanvas.delete("all")
-                #self.drawClearMaskCallback()
+                self.editClearRegionCallback()
                 self.editWorkingCanvas.create_image(0, 0, anchor=NW, image=self.editWorkingImage)
                 self.inputWidth, self.inputHeight = Image.open(self.editWorkingFile).size
                 self.editInputWidthLabel.configure(text=str(self.inputWidth))
@@ -928,7 +928,7 @@ class UiHelper():
                 self.editWorkingFile = self.listGeneratedImages[currentGeneratedImageIndex]
                 self.editWorkingImage = ImageTk.PhotoImage(self._padImage(Image.open(self.editWorkingFile), (RES_WORKING, RES_WORKING)))
                 self.editWorkingCanvas.delete("all")
-                #self.drawClearMaskCallback()
+                self.editClearRegionCallback()
                 self.editWorkingCanvas.create_image(0, 0, anchor=NW, image=self.editWorkingImage)
                 self.inputWidth, self.inputHeight = Image.open(self.editWorkingFile).size
                 self.editInputWidthLabel.configure(text=str(self.inputWidth))
@@ -953,7 +953,7 @@ class UiHelper():
             self.editWorkingFile = ""
             self.editWorkingImage = ImageTk.PhotoImage(Image.open('ui/ui-blank.png').resize((RES_WORKING, RES_WORKING)))
             self.editWorkingCanvas.delete("all")
-            #self.drawClearMaskCallback()
+            self.editClearRegionCallback()
             self.editWorkingCanvas.create_image(0, 0, anchor=NW, image=self.editWorkingImage)
             
             self.inputWidth, self.inputHeight = 0, 0
@@ -963,6 +963,7 @@ class UiHelper():
             self.editOutputWidthLabel.configure(text="")
             self.editOutputHeightLabel.configure(text="")
             self.editZoomScale.set(2)   #set back to 1x
+
 
     # ---- image to image, mask operations
     def _clipNum(self, v, vmin, vmax):
@@ -1017,6 +1018,9 @@ class UiHelper():
         self.editWorkingCanvas.delete("regionRect")
         idRegionRect = self.editWorkingCanvas.create_rectangle(self.editRegionStartX, self.editRegionStartY, self.editRegionEndX, self.editRegionEndY, fill='', outline='red', tags='regionRect')
         self.editRegionRect = {"startX": self.editRegionStartX, "startY": self.editRegionStartY, "endX": self.editRegionEndX, "endY": self.editRegionEndY, "id": idRegionRect}
+        
+    def editClearRegionCallback(self):
+        self.editRegionRect = {"startX": 1, "startY": 1, "endX": RES_WORKING-2, "endY": RES_WORKING-2, "id": None}
 
     # ---- show scale results in draw
     def drawNoiseScaleCallback(self, event):
@@ -1107,6 +1111,10 @@ class UiHelper():
                 # crop image, and save temp image
                 regionRect = self.editRegionRect
                 startX, startY, endX, endY = regionRect["startX"], regionRect["startY"], regionRect["endX"], regionRect["endY"]
+                if startX > endX:
+                    startX, endX = endX, startX
+                if startY > endY:
+                    startY, endY = endY, startY
 
                 if (startX == 1 and startY == 1 and endX == RES_WORKING -2 and endY == RES_WORKING -2) or (startX == endX and startY == endY):
                      temp_savedImageFile = self.editWorkingFile
@@ -1117,7 +1125,7 @@ class UiHelper():
                     if img_h > img_w:
                         base_scale = img_h / RES_WORKING
                     else:
-                        base_sale = img_w / RES_WORKING
+                        base_scale = img_w / RES_WORKING
 
                     dst_x_s = (int)(base_scale * startX)
                     dst_y_s = (int)(base_scale * startY)
