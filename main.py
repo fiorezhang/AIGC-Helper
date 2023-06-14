@@ -46,7 +46,7 @@ from backgroundremover.bg import remove
 
 # ==== GLOBAL MACROS ====
 # version info
-VERSION = 'v4.8'
+VERSION = 'v4.9'
 
 
 # resolutions
@@ -417,10 +417,22 @@ class UiHelper():
         self.vTranslate.set(1)
         self.translateCheckbutton = ttkbootstrap.Checkbutton(self.configOverallFrame, text="Translate", variable=self.vTranslate, width=10, bootstyle="success-round-toggle")
         self.translateCheckbutton.grid(row=5, column=1, padx=2, pady=2)    
+
+        # ------ for chat bot
+        self.configChatFrame = ttkbootstrap.Labelframe(self.configFrame, text='CHAT', width=390, height=200, bootstyle=PRIMARY)
+        self.configChatFrame.grid(row=1, column=0, sticky='ew', padx=2, pady=2)
+        
+        self.threadInfoLabel = ttkbootstrap.Label(self.configChatFrame, text='Chatbot Threads', bootstyle=INFO)
+        self.threadInfoLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)  
+        self.threadCountScale = ttkbootstrap.Scale(self.configChatFrame, from_=4, to=12, orient=HORIZONTAL, command=self.configThreadScaleCallback)
+        self.configThreadCountStatusLabel = ttkbootstrap.Label(self.configChatFrame, text='8')
+        self.threadCountScale.set(8) 
+        self.threadCountScale.grid(row=1, column=1, columnspan=2, sticky='w', padx=2, pady=2)
+        self.configThreadCountStatusLabel.grid(row=1, column=3, padx=2, pady=2)
         
         # ------ for draw image
         self.configDrawFrame = ttkbootstrap.Labelframe(self.configFrame, text='DRAW', width=390, height=200, bootstyle=PRIMARY)
-        self.configDrawFrame.grid(row=1, column=0, sticky='ew', padx=2, pady=2)
+        self.configDrawFrame.grid(row=2, column=0, sticky='ew', padx=2, pady=2)
 
         self.generateLabel = ttkbootstrap.Label(self.configDrawFrame, text='Generation Speed', bootstyle=INFO)
         self.generateLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)  
@@ -432,21 +444,21 @@ class UiHelper():
         self.qualityScale.grid(row=2, column=1, columnspan=2, sticky='w', padx=2, pady=2)
         self.configQualityStatusLabel.grid(row=2, column=3, padx=2, pady=2)
         self.timeLabel = ttkbootstrap.Label(self.configDrawFrame, text='Time: ', width=30) #must have, can hide
-        #self.timeLabel.grid(row=2, column=0, columnspan=3, padx=2, pady=2)
+        self.timeLabel.grid(row=3, column=1, columnspan=3, padx=2, pady=2)
         
         self.xpuLabel = ttkbootstrap.Label(self.configDrawFrame, text='Select "XPU"', bootstyle=INFO)
-        self.xpuLabel.grid(row=3, column=0, sticky='w', padx=2, pady=2)
+        self.xpuLabel.grid(row=4, column=0, sticky='w', padx=2, pady=2)
         
         self.listXpu = [('CPU  ', 0), ('GPU 0', 1), ('GPU 1', 2), ('AUTO', 3)]
         self.vXpu = tk.IntVar()
         self.vXpu.set(3)
         for xpu, num in self.listXpu:
             self.xpuRadiobutton = tk.Radiobutton(self.configDrawFrame, text=xpu, variable=self.vXpu, value=num, width=10, indicatoron=False)
-            self.xpuRadiobutton.grid(row=4+int(num/2), column=1+int(num%2), padx=2, pady=2)  
+            self.xpuRadiobutton.grid(row=5+int(num/2), column=1+int(num%2), padx=2, pady=2)  
 
         # ------ for edit image
         self.configEditFrame = ttkbootstrap.Labelframe(self.configFrame, text='EDIT', width=390, height=200, bootstyle=PRIMARY)
-        self.configEditFrame.grid(row=2, column=0, sticky='ew', padx=2, pady=2)
+        self.configEditFrame.grid(row=3, column=0, sticky='ew', padx=2, pady=2)
 
         self.matLabel = ttkbootstrap.Label(self.configEditFrame, text='Matting Config', bootstyle=INFO)
         self.matLabel.grid(row=0, column=0, sticky='w', padx=2, pady=2)
@@ -599,8 +611,10 @@ class UiHelper():
         # import Chat GPT model
         from pyllamacpp.model import Model    
         self.chatModel = Model(ggml_model='./chatModels/gpt4all-model.bin', n_ctx=2048)
+        threadCount = 8
         while True:
             if self.isChatting == True:
+                threadCount = round(self.threadCountScale.get())
                 self.chatInputEntry.config(state=tk.DISABLED)
                 self.chatOutputText.config(state=tk.NORMAL)
                 # call GPT to generate feedback
@@ -612,7 +626,10 @@ class UiHelper():
                     while chatInputString:
                         self.chatOutputText.delete('1.0', END)
                         self.chatOutputText.insert(END, '>', 'tagReact')
-                        chatGeneratedString = self.chatModel.generate(chatInputString+'\n\n', n_predict=512, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=8)
+                        try: 
+                            chatGeneratedString = self.chatModel.generate(chatInputString+'\n\n', n_predict=512, repeat_penalty=1.3, new_text_callback=self.chatOutputCallback, n_threads=threadCount)
+                        except:
+                            chatGeneratedString = '\n\n'
                         chatGeneratedStringInput, chatGeneratedStringOutput = chatGeneratedString.split('\n\n')[0], chatGeneratedString.split('\n\n')[1]
                         chatGeneratedStringTranslated = ""
                         if self.isTranslateOn:
@@ -1036,6 +1053,10 @@ class UiHelper():
         
     def drawBatchScaleCallback(self, event):
         self.drawBatchStatusLabel.configure(text=str(round(float(event))))
+
+    # ---- show scale results in config
+    def configThreadScaleCallback(self, event):
+        self.configThreadCountStatusLabel.configure(text=str(round(float(event))))
         
     # ---- show scale results in config
     def configQualityScaleCallback(self, event):
